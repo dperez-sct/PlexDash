@@ -1,0 +1,86 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: plexdash-backend
+  namespace: plexdash
+  labels:
+    app: plexdash-backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: plexdash-backend
+  template:
+    metadata:
+      labels:
+        app: plexdash-backend
+    spec:
+      containers:
+        - name: backend
+          image: plexdash-backend:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: plexdash-backend-secrets
+                  key: database-url
+            - name: PLEX_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: plexdash-config
+                  key: plex-url
+                  optional: true
+            - name: PLEX_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: plexdash-backend-secrets
+                  key: plex-token
+                  optional: true
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+          securityContext:
+            readOnlyRootFilesystem: false
+            runAsNonRoot: false
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: plexdash-backend
+  namespace: plexdash
+spec:
+  selector:
+    app: plexdash-backend
+  ports:
+    - protocol: TCP
+      port: 8000
+      targetPort: 8000
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: plexdash-config
+  namespace: plexdash
+data:
+  plex-url: "http://plex.local:32400"
