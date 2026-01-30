@@ -1,0 +1,51 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: plexdash-postgres
+    environment:
+      POSTGRES_USER: plexdash
+      POSTGRES_PASSWORD: plexdash
+      POSTGRES_DB: plexdash
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U plexdash"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: plexdash-backend
+    environment:
+      DATABASE_URL: postgresql://plexdash:plexdash@postgres:5432/plexdash
+      PLEX_URL: ${PLEX_URL:-http://host.docker.internal:32400}
+      PLEX_TOKEN: ${PLEX_TOKEN:-}
+      DEBUG: "true"
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: plexdash-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:

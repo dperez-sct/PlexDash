@@ -1,0 +1,47 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: plexdash-db
+  namespace: plexdash
+spec:
+  instances: 1
+  primaryUpdateStrategy: unsupervised
+
+  storage:
+    size: 5Gi
+    # Change to your storage class
+    # storageClass: standard
+
+  postgresql:
+    parameters:
+      max_connections: "100"
+      shared_buffers: "256MB"
+
+  bootstrap:
+    initdb:
+      database: plexdash
+      owner: plexdash
+      secret:
+        name: plexdash-db-credentials
+
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+
+  # Uncomment for backups to S3/MinIO
+  # backup:
+  #   barmanObjectStore:
+  #     destinationPath: s3://bucket/path
+  #     endpointURL: https://s3.example.com
+  #     s3Credentials:
+  #       accessKeyId:
+  #         name: backup-creds
+  #         key: ACCESS_KEY_ID
+  #       secretAccessKey:
+  #         name: backup-creds
+  #         key: ACCESS_SECRET_KEY
+  #   retentionPolicy: "30d"
