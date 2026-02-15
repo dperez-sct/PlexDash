@@ -11,13 +11,13 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_URL=sqlite:///./plexdash.db
-      - PLEX_URL=${PLEX_URL:-http://host.docker.internal:32400}
-      - PLEX_TOKEN=${PLEX_TOKEN:-}
+      - DATABASE_URL=sqlite:////app/data/plexdash.db
+      - PLEX_URL=${PLEX_URL:-http://192.168.3.10:32400}
+      - PLEX_TOKEN=${PLEX_TOKEN:-ZSy28TASRTttZBhERYJs}
       # Generate a secure random string for production
       - SECRET_KEY=${SECRET_KEY:-changeme_in_production_please}
     volumes:
-      - plexdash_data:/app
+      - plexdash_data:/app/data
     extra_hosts:
       - "host.docker.internal:host-gateway"
 

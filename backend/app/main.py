@@ -1,6 +1,9 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+import os
 
 from app.config import get_settings
 from app.database import engine, Base, SessionLocal
@@ -52,21 +55,18 @@ app.include_router(settings_router.router, prefix="/api", dependencies=protected
 app.include_router(monthly_payments.router, prefix="/api", dependencies=protected_dependencies)
 
 
-@app.get("/")
-def root():
-    return {"message": "Welcome to PlexDash API"}
-
-
 @app.get("/health")
 def health():
     return {"status": "healthy"}
 
+@app.get("/")
+async def serve_index():
+    if os.path.exists("static/index.html"):
+        return FileResponse("static/index.html")
+    return {"message": "Welcome to PlexDash API (Frontend not found)"}
+
 
 # Serve frontend static files
-import os
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
-
 if os.path.isdir("static"):
     app.mount("/assets", StaticFiles(directory="static/assets"), name="assets")
     
@@ -74,4 +74,6 @@ if os.path.isdir("static"):
     async def serve_spa(full_path: str):
         if full_path.startswith("api"):
             return {"error": "Not found"}
-        return FileResponse("static/index.html")
+        if os.path.exists("static/index.html"):
+            return FileResponse("static/index.html")
+        return {"error": "Frontend not found"}
