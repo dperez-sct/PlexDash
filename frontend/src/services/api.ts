@@ -7,12 +7,9 @@ const api = axios.create({
   },
 });
 
-// Add auth token to requests
+
+// Add auth token to requests - REMOVED (using cookies)
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('auth_token');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
   return config;
 });
 
@@ -21,9 +18,9 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      localStorage.removeItem('auth_token');
-      localStorage.removeItem('auth_user');
-      window.location.href = '/login';
+      if (!window.location.pathname.includes('/login')) {
+         window.location.href = '/login';
+      }
     }
     return Promise.reject(error);
   }
@@ -36,9 +33,8 @@ export interface LoginRequest {
 }
 
 export interface LoginResponse {
-  access_token: string;
-  token_type: string;
   username: string;
+  message: string;
 }
 
 export interface ChangeCredentialsRequest {
@@ -48,6 +44,7 @@ export interface ChangeCredentialsRequest {
 }
 
 export const login = (data: LoginRequest) => api.post<LoginResponse>('/auth/login', data);
+export const logout = () => api.post('/auth/logout');
 export const getMe = () => api.get<{ username: string }>('/auth/me');
 export const changeCredentials = (data: ChangeCredentialsRequest) => api.post('/auth/change-credentials', data);
 

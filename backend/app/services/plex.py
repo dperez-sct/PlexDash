@@ -2,6 +2,7 @@ import httpx
 import xml.etree.ElementTree as ET
 from typing import Optional
 from app.config import get_settings
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 
 class PlexService:
@@ -52,6 +53,11 @@ class PlexService:
             print(f"Error fetching server machineIdentifier: {e}")
             return None
 
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=4, max=10),
+        retry=retry_if_exception_type(httpx.HTTPError)
+    )
     async def get_users(self) -> list[dict]:
         """Fetch users with access to this server from plex.tv."""
         if not self.token:
@@ -96,6 +102,11 @@ class PlexService:
                 print(f"Error fetching Plex users: {e}")
                 return []
 
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=4, max=10),
+        retry=retry_if_exception_type(httpx.HTTPError)
+    )
     async def get_server_info(self) -> Optional[dict]:
         """Get Plex server information."""
         if not self.token:

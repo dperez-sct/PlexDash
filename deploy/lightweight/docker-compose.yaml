@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  plexdash:
+    build:
+      context: ../../
+      dockerfile: deploy/lightweight/Dockerfile
+    container_name: plexdash
+    image: plexdash:latest
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=sqlite:///./plexdash.db
+      - PLEX_URL=${PLEX_URL:-http://host.docker.internal:32400}
+      - PLEX_TOKEN=${PLEX_TOKEN:-}
+      # Generate a secure random string for production
+      - SECRET_KEY=${SECRET_KEY:-changeme_in_production_please}
+    volumes:
+      - plexdash_data:/app
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+volumes:
+  plexdash_data:

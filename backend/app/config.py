@@ -13,6 +13,11 @@ class Settings(BaseSettings):
     plex_url: str = "http://localhost:32400"
     plex_token: str = ""
 
+    # Security
+    secret_key: str = "changeme_in_production_please"
+    algorithm: str = "HS256"
+    access_token_expire_minutes: int = 43200  # 30 days
+
     class Config:
         env_file = ".env"
 

@@ -60,3 +60,18 @@ def root():
 @app.get("/health")
 def health():
     return {"status": "healthy"}
+
+
+# Serve frontend static files
+import os
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+
+if os.path.isdir("static"):
+    app.mount("/assets", StaticFiles(directory="static/assets"), name="assets")
+    
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str):
+        if full_path.startswith("api"):
+            return {"error": "Not found"}
+        return FileResponse("static/index.html")

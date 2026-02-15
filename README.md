@@ -19,43 +19,53 @@ Payment management system for Plex servers.
 - **Database**: PostgreSQL (CloudNativePG for Kubernetes)
 - **Infrastructure**: Docker Compose (dev) + Kubernetes (prod)
 
-## Quick Start
+## Deployment Options
 
-### Prerequisites
+PlexDash offers two deployment modes. Choose the one that best fits your needs.
 
-- Docker and Docker Compose
-- Plex server with API access
+### Option 1: Standard Deployment (Recommended)
+Best for production environments. Uses a separate PostgreSQL container and isolated frontend/backend containers.
 
-### Development Setup
+1. **Configure Environment**:
+   ```bash
+   cp .env.example .env
+   # Edit .env with your Plex URL and token
+   ```
+
+2. **Start Services**:
+   ```bash
+   docker-compose up -d
+   ```
+
+3. **Access**:
+   - Frontend: [http://localhost:3000](http://localhost:3000)
+   - Backend API: [http://localhost:8000](http://localhost:8000)
+
+### Option 2: Lightweight (Single Container)
+Best for low-resource environments (e.g., Raspberry Pi). Uses SQLite and bundles the frontend/backend into a single container.
+
+1. **Navigate to lightweight directory**:
+   ```bash
+   cd deploy/lightweight/
+   ```
+
+2. **Start Service**:
+   ```bash
+   # You can set variables inline or create a .env here
+   PLEX_URL=http://192.168.1.10:32400 PLEX_TOKEN=your-token docker-compose up -d
+   ```
+
+3. **Access**:
+   - Dashboard: [http://localhost:8000](http://localhost:8000)
+   - *Note: Database is stored in `plexdash.db` in the volume.*
+
+## Quick Start (Development)
 
 1. Clone the repository:
-```bash
-git clone <repository-url>
-cd plexdash
-```
-
-2. Copy environment file and configure:
-```bash
-cp .env.example .env
-# Edit .env with your Plex URL and token
-```
-
-3. Start the services:
-```bash
-docker-compose up --build
-```
-
-4. Access the application:
-   - Frontend: http://localhost:3000
-   - Backend API: http://localhost:8000
-   - API Docs: http://localhost:8000/docs
-
-5. Login with default credentials:
-   - Username: `admin`
-   - Password: `admin`
-   - **Important**: Change these credentials in Settings after first login
-
-### Getting Your Plex Token
+   ```bash
+   git clone <repository-url>
+   cd plexdash
+   ```
 
 1. Sign in to Plex Web App
 2. Open browser developer tools (F12)

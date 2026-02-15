@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { login as apiLogin, getMe, LoginRequest } from '../services/api';
+import { login as apiLogin, logout as apiLogout, getMe, LoginRequest } from '../services/api';
 
 interface AuthContextType {
   isAuthenticated: boolean;
@@ -18,16 +18,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const checkAuth = async () => {
-      const token = localStorage.getItem('auth_token');
-      if (token) {
-        try {
-          const response = await getMe();
-          setUsername(response.data.username);
-          setIsAuthenticated(true);
-        } catch {
-          localStorage.removeItem('auth_token');
-          localStorage.removeItem('auth_user');
-        }
+      try {
+        const response = await getMe();
+        setUsername(response.data.username);
+        setIsAuthenticated(true);
+      } catch {
+        // localStorage.removeItem('auth_token');
+        // localStorage.removeItem('auth_user');
+        setIsAuthenticated(false);
       }
       setLoading(false);
     };
@@ -36,15 +34,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (data: LoginRequest) => {
     const response = await apiLogin(data);
-    localStorage.setItem('auth_token', response.data.access_token);
-    localStorage.setItem('auth_user', response.data.username);
+    // localStorage.setItem('auth_token', response.data.access_token);
+    // localStorage.setItem('auth_user', response.data.username);
     setUsername(response.data.username);
     setIsAuthenticated(true);
   };
 
-  const logout = () => {
-    localStorage.removeItem('auth_token');
-    localStorage.removeItem('auth_user');
+  const logout = async () => {
+    try {
+      await apiLogout();
+    } catch (e) {
+      console.error("Logout failed", e);
+    }
+    // localStorage.removeItem('auth_token');
+    // localStorage.removeItem('auth_user');
     setUsername(null);
     setIsAuthenticated(false);
   };
