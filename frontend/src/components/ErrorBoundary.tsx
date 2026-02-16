@@ -30,7 +30,7 @@ class ErrorBoundary extends Component<Props, State> {
                     <div className="bg-plex-dark p-8 rounded-lg max-w-md w-full text-center">
                         <h1 className="text-2xl font-bold text-red-500 mb-4">Algo salió mal</h1>
                         <p className="text-gray-300 mb-6">
-                            Ha ocurrido un error inesperado. Por favor, recargue la página o contacte al administrador via Discord de Plex.
+                            Ha ocurrido un error inesperado. Por favor, recargue la página o contacte al administrador de Plex.
                         </p>
                         <div className="bg-black/30 p-4 rounded text-left overflow-auto max-h-48 mb-6">
                             <code className="text-red-400 text-xs">

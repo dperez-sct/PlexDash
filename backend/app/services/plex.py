@@ -174,6 +174,38 @@ class PlexService:
         server = self._get_plex_server()
         return server.myPlexAccount(), server
 
+    async def invite_friend(self, email: str) -> bool:
+        """Invite a user to the Plex server by email and share all libraries."""
+        if not self.token:
+            logger.warning("Plex token not configured")
+            return False
+
+        try:
+            import asyncio
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(None, self._invite_friend_sync, email)
+            return result
+        except Exception as e:
+            logger.error(f"Error inviting friend: {e}", exc_info=True)
+            return False
+
+    def _invite_friend_sync(self, email: str) -> bool:
+        """Synchronous implementation of invite_friend."""
+        try:
+            account, server = self._get_plex_account()
+            sections = server.library.sections()
+            logger.info(f"Inviting {email} and sharing {len(sections)} libraries")
+            account.inviteFriend(
+                user=email,
+                server=server,
+                sections=sections
+            )
+            logger.info(f"Invitation sent to {email}")
+            return True
+        except Exception as e:
+            logger.error(f"Error inviting {email}: {e}", exc_info=True)
+            return False
+
     async def share_libraries(self, username: str) -> bool:
         """Share all libraries with a user using python-plexapi."""
         if not self.token:

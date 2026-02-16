@@ -97,7 +97,8 @@ async def sync_plex_users(db: Session = Depends(get_db)):
                 existing.deleted_from_plex = False
                 restored += 1
         else:
-            new_user = User(**plex_user)
+            user_data = {k: v for k, v in plex_user.items() if k != "shared_server_id"}
+            new_user = User(**user_data)
             db.add(new_user)
             synced += 1
 
