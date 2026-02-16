@@ -10,6 +10,8 @@ import {
   testPlexConnection,
   getCurrencySettings,
   updateCurrencySettings,
+  getMonthlyPrice,
+  updateMonthlyPrice,
   changeCredentials,
   PlexSettingsResponse,
   PlexTestResult,
@@ -33,6 +35,10 @@ export default function Settings() {
   const [savingCurrency, setSavingCurrency] = useState(false);
   const [currencyMessage, setCurrencyMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
+  const [monthlyPrice, setMonthlyPrice] = useState('0.00');
+  const [savingPrice, setSavingPrice] = useState(false);
+  const [priceMessage, setPriceMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
   const { username, logout } = useAuth();
   const [credentialsForm, setCredentialsForm] = useState({
     current_password: '',
@@ -46,9 +52,10 @@ export default function Settings() {
   useEffect(() => {
     const fetchSettings = async () => {
       try {
-        const [plexResponse, currencyResponse] = await Promise.all([
+        const [plexResponse, currencyResponse, priceResponse] = await Promise.all([
           getPlexSettings(),
           getCurrencySettings(),
+          getMonthlyPrice(),
         ]);
         setSettings(plexResponse.data);
         setFormData({
@@ -56,6 +63,7 @@ export default function Settings() {
           plex_token: '',
         });
         setCurrencySymbol(currencyResponse.data.currency_symbol);
+        setMonthlyPrice(priceResponse.data.monthly_price.toString());
       } catch (error) {
         console.error('Error fetching settings:', error);
       } finally {
@@ -76,13 +84,13 @@ export default function Settings() {
         plex_url: formData.plex_url,
         plex_token: formData.plex_token,
       });
-      setMessage({ type: 'success', text: 'Settings saved successfully' });
+      setMessage({ type: 'success', text: 'Configuración guardada correctamente' });
       // Update the settings state to reflect that token is now configured
       setSettings((prev) => prev ? { ...prev, plex_url: formData.plex_url, plex_token_configured: true } : null);
       // Clear the token field after saving
       setFormData((prev) => ({ ...prev, plex_token: '' }));
     } catch (error) {
-      setMessage({ type: 'error', text: 'Failed to save settings' });
+      setMessage({ type: 'error', text: 'Error al guardar la configuración' });
     } finally {
       setSaving(false);
     }
@@ -97,7 +105,7 @@ export default function Settings() {
       const response = await testPlexConnection();
       setTestResult(response.data);
     } catch (error) {
-      setTestResult({ success: false, error: 'Failed to test connection' });
+      setTestResult({ success: false, error: 'Error al probar la conexión' });
     } finally {
       setTesting(false);
     }
@@ -106,26 +114,25 @@ export default function Settings() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="text-gray-400">Loading...</div>
+        <div className="text-gray-400">Cargando...</div>
       </div>
     );
   }
 
   return (
     <div>
-      <h1 className="text-3xl font-bold text-white mb-8">Settings</h1>
+      <h1 className="text-3xl font-bold text-white mb-8">Ajustes</h1>
 
       {/* Plex Configuration */}
       <div className="bg-plex-dark rounded-lg p-6 max-w-2xl">
-        <h2 className="text-xl font-semibold text-white mb-6">Plex Server Configuration</h2>
+        <h2 className="text-xl font-semibold text-white mb-6">Configuración del Servidor Plex</h2>
 
         {message && (
           <div
-            className={`mb-4 p-4 rounded-lg flex items-center ${
-              message.type === 'success'
-                ? 'bg-green-500/20 text-green-400'
-                : 'bg-red-500/20 text-red-400'
-            }`}
+            className={`mb-4 p-4 rounded-lg flex items-center ${message.type === 'success'
+              ? 'bg-green-500/20 text-green-400'
+              : 'bg-red-500/20 text-red-400'
+              }`}
           >
             {message.type === 'success' ? (
               <CheckCircleIcon className="h-5 w-5 mr-2" />
@@ -138,7 +145,7 @@ export default function Settings() {
 
         <form onSubmit={handleSubmit} className="space-y-6">
           <div>
-            <label className="block text-gray-400 text-sm mb-2">Plex Server URL</label>
+            <label className="block text-gray-400 text-sm mb-2">URL del Servidor Plex</label>
             <input
               type="url"
               value={formData.plex_url}
@@ -148,34 +155,34 @@ export default function Settings() {
               className="w-full bg-plex-darker text-white border border-gray-700 rounded-lg px-4 py-3 focus:border-plex-yellow focus:outline-none"
             />
             <p className="text-gray-500 text-sm mt-1">
-              The URL of your Plex Media Server (e.g., http://192.168.1.100:32400)
+              La URL de tu servidor Plex (ej. http://192.168.1.100:32400)
             </p>
           </div>
 
           <div>
             <label className="block text-gray-400 text-sm mb-2">
-              Plex Token
+              Token de Plex
               {settings?.plex_token_configured && (
-                <span className="ml-2 text-green-400 text-xs">(configured)</span>
+                <span className="ml-2 text-green-400 text-xs">(configurado)</span>
               )}
             </label>
             <input
               type="password"
               value={formData.plex_token}
               onChange={(e) => setFormData({ ...formData, plex_token: e.target.value })}
-              placeholder={settings?.plex_token_configured ? '********' : 'Enter your Plex token'}
+              placeholder={settings?.plex_token_configured ? '********' : 'Introduce tu token de Plex'}
               required={!settings?.plex_token_configured}
               className="w-full bg-plex-darker text-white border border-gray-700 rounded-lg px-4 py-3 focus:border-plex-yellow focus:outline-none"
             />
             <p className="text-gray-500 text-sm mt-1">
-              Your Plex authentication token.{' '}
+              Tu token de autenticación de Plex.{' '}
               <a
                 href="https://support.plex.tv/articles/204059436-finding-an-authentication-token-x-plex-token/"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-plex-yellow hover:underline"
               >
-                How to find your token
+                Cómo encontrar tu token
               </a>
             </p>
           </div>
@@ -186,7 +193,7 @@ export default function Settings() {
               disabled={saving}
               className="px-6 py-2 bg-plex-yellow text-plex-darker font-medium rounded-lg hover:bg-plex-orange transition-colors disabled:opacity-50"
             >
-              {saving ? 'Saving...' : 'Save Settings'}
+              {saving ? 'Guardando...' : 'Guardar Ajustes'}
             </button>
             <button
               type="button"
@@ -195,7 +202,7 @@ export default function Settings() {
               className="flex items-center px-6 py-2 border border-gray-600 text-gray-300 rounded-lg hover:bg-gray-800 transition-colors disabled:opacity-50"
             >
               <ArrowPathIcon className={`h-5 w-5 mr-2 ${testing ? 'animate-spin' : ''}`} />
-              {testing ? 'Testing...' : 'Test Connection'}
+              {testing ? 'Probando...' : 'Probar Conexión'}
             </button>
           </div>
         </form>
@@ -203,26 +210,25 @@ export default function Settings() {
         {/* Test Result */}
         {testResult && (
           <div
-            className={`mt-6 p-4 rounded-lg ${
-              testResult.success ? 'bg-green-500/20' : 'bg-red-500/20'
-            }`}
+            className={`mt-6 p-4 rounded-lg ${testResult.success ? 'bg-green-500/20' : 'bg-red-500/20'
+              }`}
           >
             {testResult.success ? (
               <div>
                 <div className="flex items-center text-green-400 mb-2">
                   <CheckCircleIcon className="h-5 w-5 mr-2" />
-                  Connection successful!
+                  ¡Conexión exitosa!
                 </div>
                 {testResult.server_info && (
                   <div className="text-gray-300 text-sm space-y-1">
                     <p>
-                      <span className="text-gray-500">Server:</span> {testResult.server_info.name}
+                      <span className="text-gray-500">Servidor:</span> {testResult.server_info.name}
                     </p>
                     <p>
-                      <span className="text-gray-500">Version:</span> {testResult.server_info.version}
+                      <span className="text-gray-500">Versión:</span> {testResult.server_info.version}
                     </p>
                     <p>
-                      <span className="text-gray-500">Platform:</span> {testResult.server_info.platform}
+                      <span className="text-gray-500">Plataforma:</span> {testResult.server_info.platform}
                     </p>
                   </div>
                 )}
@@ -230,73 +236,142 @@ export default function Settings() {
             ) : (
               <div className="flex items-center text-red-400">
                 <ExclamationCircleIcon className="h-5 w-5 mr-2" />
-                {testResult.error || 'Connection failed'}
+                {testResult.error || 'Fallo en la conexión'}
               </div>
             )}
           </div>
         )}
       </div>
 
-      {/* Currency Configuration */}
+      {/* Payment Configuration */}
       <div className="bg-plex-dark rounded-lg p-6 max-w-2xl mt-8">
-        <h2 className="text-xl font-semibold text-white mb-6">Configuración de Divisa</h2>
+        <h2 className="text-xl font-semibold text-white mb-6">Configuración de Pagos</h2>
 
-        {currencyMessage && (
-          <div
-            className={`mb-4 p-4 rounded-lg flex items-center ${
-              currencyMessage.type === 'success'
+        {/* Currency */}
+        <div className="mb-8 border-b border-gray-700 pb-8">
+          {currencyMessage && (
+            <div
+              className={`mb-4 p-4 rounded-lg flex items-center ${currencyMessage.type === 'success'
                 ? 'bg-green-500/20 text-green-400'
                 : 'bg-red-500/20 text-red-400'
-            }`}
-          >
-            {currencyMessage.type === 'success' ? (
-              <CheckCircleIcon className="h-5 w-5 mr-2" />
-            ) : (
-              <ExclamationCircleIcon className="h-5 w-5 mr-2" />
-            )}
-            {currencyMessage.text}
-          </div>
-        )}
+                }`}
+            >
+              {currencyMessage.type === 'success' ? (
+                <CheckCircleIcon className="h-5 w-5 mr-2" />
+              ) : (
+                <ExclamationCircleIcon className="h-5 w-5 mr-2" />
+              )}
+              {currencyMessage.text}
+            </div>
+          )}
 
-        <form
-          onSubmit={async (e) => {
-            e.preventDefault();
-            setSavingCurrency(true);
-            setCurrencyMessage(null);
-            try {
-              await updateCurrencySettings({ currency_symbol: currencySymbol });
-              setCurrencyMessage({ type: 'success', text: 'Símbolo de divisa guardado' });
-            } catch {
-              setCurrencyMessage({ type: 'error', text: 'Error al guardar' });
-            } finally {
-              setSavingCurrency(false);
-            }
-          }}
-          className="space-y-6"
-        >
-          <div>
-            <label className="block text-gray-400 text-sm mb-2">Símbolo de Divisa</label>
-            <input
-              type="text"
-              value={currencySymbol}
-              onChange={(e) => setCurrencySymbol(e.target.value)}
-              placeholder="$"
-              maxLength={5}
-              className="w-32 bg-plex-darker text-white border border-gray-700 rounded-lg px-4 py-3 focus:border-plex-yellow focus:outline-none text-center text-lg"
-            />
-            <p className="text-gray-500 text-sm mt-1">
-              Ejemplos: $, €, £, ₿
-            </p>
-          </div>
-
-          <button
-            type="submit"
-            disabled={savingCurrency}
-            className="px-6 py-2 bg-plex-yellow text-plex-darker font-medium rounded-lg hover:bg-plex-orange transition-colors disabled:opacity-50"
+          <form
+            onSubmit={async (e) => {
+              e.preventDefault();
+              setSavingCurrency(true);
+              setCurrencyMessage(null);
+              try {
+                await updateCurrencySettings({ currency_symbol: currencySymbol });
+                setCurrencyMessage({ type: 'success', text: 'Símbolo de divisa guardado' });
+              } catch {
+                setCurrencyMessage({ type: 'error', text: 'Error al guardar' });
+              } finally {
+                setSavingCurrency(false);
+              }
+            }}
+            className="space-y-6"
           >
-            {savingCurrency ? 'Guardando...' : 'Guardar'}
-          </button>
-        </form>
+            <div>
+              <label className="block text-gray-400 text-sm mb-2">Símbolo de Divisa</label>
+              <div className="flex items-center gap-4">
+                <input
+                  type="text"
+                  value={currencySymbol}
+                  onChange={(e) => setCurrencySymbol(e.target.value)}
+                  placeholder="$"
+                  maxLength={5}
+                  className="w-32 bg-plex-darker text-white border border-gray-700 rounded-lg px-4 py-3 focus:border-plex-yellow focus:outline-none text-center text-lg"
+                />
+                <button
+                  type="submit"
+                  disabled={savingCurrency}
+                  className="px-6 py-3 bg-plex-yellow text-plex-darker font-medium rounded-lg hover:bg-plex-orange transition-colors disabled:opacity-50"
+                >
+                  {savingCurrency ? 'Guardando...' : 'Guardar'}
+                </button>
+              </div>
+              <p className="text-gray-500 text-sm mt-1">
+                Ejemplos: $, €, £, ₿
+              </p>
+            </div>
+          </form>
+        </div>
+
+        {/* Monthly Price */}
+        <div>
+          {priceMessage && (
+            <div
+              className={`mb-4 p-4 rounded-lg flex items-center ${priceMessage.type === 'success'
+                ? 'bg-green-500/20 text-green-400'
+                : 'bg-red-500/20 text-red-400'
+                }`}
+            >
+              {priceMessage.type === 'success' ? (
+                <CheckCircleIcon className="h-5 w-5 mr-2" />
+              ) : (
+                <ExclamationCircleIcon className="h-5 w-5 mr-2" />
+              )}
+              {priceMessage.text}
+            </div>
+          )}
+
+          <form
+            onSubmit={async (e) => {
+              e.preventDefault();
+              setSavingPrice(true);
+              setPriceMessage(null);
+              try {
+                const price = parseFloat(monthlyPrice);
+                if (isNaN(price) || price < 0) {
+                  setPriceMessage({ type: 'error', text: 'Precio inválido' });
+                  return;
+                }
+                await updateMonthlyPrice(price);
+                setPriceMessage({ type: 'success', text: 'Precio mensual guardado' });
+              } catch {
+                setPriceMessage({ type: 'error', text: 'Error al guardar' });
+              } finally {
+                setSavingPrice(false);
+              }
+            }}
+            className="space-y-6"
+          >
+            <div>
+              <label className="block text-gray-400 text-sm mb-2">Precio Mensual ({currencySymbol})</label>
+              <div className="flex items-center gap-4">
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={monthlyPrice}
+                  onChange={(e) => setMonthlyPrice(e.target.value)}
+                  placeholder="0.00"
+                  className="w-32 bg-plex-darker text-white border border-gray-700 rounded-lg px-4 py-3 focus:border-plex-yellow focus:outline-none text-center text-lg"
+                />
+                <button
+                  type="submit"
+                  disabled={savingPrice}
+                  className="px-6 py-3 bg-plex-yellow text-plex-darker font-medium rounded-lg hover:bg-plex-orange transition-colors disabled:opacity-50"
+                >
+                  {savingPrice ? 'Guardando...' : 'Guardar'}
+                </button>
+              </div>
+              <p className="text-gray-500 text-sm mt-1">
+                Este precio se usará para la función de pago rápido.
+              </p>
+            </div>
+          </form>
+        </div>
       </div>
 
       {/* Security Configuration */}
@@ -305,11 +380,10 @@ export default function Settings() {
 
         {credentialsMessage && (
           <div
-            className={`mb-4 p-4 rounded-lg flex items-center ${
-              credentialsMessage.type === 'success'
-                ? 'bg-green-500/20 text-green-400'
-                : 'bg-red-500/20 text-red-400'
-            }`}
+            className={`mb-4 p-4 rounded-lg flex items-center ${credentialsMessage.type === 'success'
+              ? 'bg-green-500/20 text-green-400'
+              : 'bg-red-500/20 text-red-400'
+              }`}
           >
             {credentialsMessage.type === 'success' ? (
               <CheckCircleIcon className="h-5 w-5 mr-2" />

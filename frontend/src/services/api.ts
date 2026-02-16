@@ -19,7 +19,7 @@ api.interceptors.response.use(
   (error) => {
     if (error.response?.status === 401) {
       if (!window.location.pathname.includes('/login')) {
-         window.location.href = '/login';
+        window.location.href = '/login';
       }
     }
     return Promise.reject(error);
@@ -112,6 +112,10 @@ export const updatePayment = (id: number, data: Partial<Payment>) =>
   api.put<Payment>(`/payments/${id}`, data);
 export const markPaymentPaid = (id: number) => api.put<Payment>(`/payments/${id}/mark-paid`);
 export const deletePayment = (id: number) => api.delete(`/payments/${id}`);
+export const createQuickPayment = (userId: number) => api.post('/payments/quick', { user_id: userId });
+
+export const removeUserAccess = (userId: number) => api.delete(`/users/${userId}/access`);
+export const reactivateUser = (userId: number) => api.post(`/users/${userId}/reactivate`);
 
 // Dashboard
 export interface RecentPayment {
@@ -208,13 +212,15 @@ export const toggleMonthPaid = (userId: number, year: number, month: number) =>
 // User Payment History
 export interface YearPaymentData {
   year: number;
-  payments: { [month: number]: {
-    id: number;
-    month: number;
-    amount: number;
-    is_paid: boolean;
-    paid_at: string | null;
-  }};
+  payments: {
+    [month: number]: {
+      id: number;
+      month: number;
+      amount: number;
+      is_paid: boolean;
+      paid_at: string | null;
+    }
+  };
   total_paid: number;
 }
 
@@ -234,5 +240,16 @@ export interface UserPaymentHistory {
 
 export const getUserPaymentHistory = (userId: number) =>
   api.get<UserPaymentHistory>(`/monthly-payments/user/${userId}/history`);
+
+// Monthly Price Settings
+export interface MonthlyPriceResponse {
+  monthly_price: number;
+}
+
+export const getMonthlyPrice = () => api.get<MonthlyPriceResponse>('/settings/price');
+export const updateMonthlyPrice = (price: number) => api.put('/settings/price', { monthly_price: price });
+
+// Invite User
+export const inviteUser = (email: string) => api.post<User>('/users/invite', { email });
 
 export default api;

@@ -1,12 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, extract
 from typing import List
 from datetime import datetime
 
 from app.database import get_db
 from app.models.payment import Payment
 from app.models.user import User
+from app.models.settings import Settings, MONTHLY_PRICE_KEY
 from app.schemas import Payment as PaymentSchema, PaymentCreate, PaymentUpdate
 
 router = APIRouter(prefix="/payments", tags=["payments"])
@@ -87,3 +88,47 @@ def delete_payment(payment_id: int, db: Session = Depends(get_db)):
     db.delete(payment)
     db.commit()
     return {"message": "Payment deleted"}
+
+
+@router.post("/quick/{user_id}", response_model=PaymentSchema)
+def create_quick_payment(user_id: int, db: Session = Depends(get_db)):
+    """Create a payment for the current month with the default monthly price."""
+    # Check if user exists
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Get monthly price
+    price_setting = db.query(Settings).filter(Settings.key == MONTHLY_PRICE_KEY).first()
+    amount = float(price_setting.value) if price_setting and price_setting.value else 0.0
+
+    if amount <= 0:
+        raise HTTPException(status_code=400, detail="Monthly price not configured")
+
+    # Check if payment already exists for this month
+    now = datetime.utcnow()
+    existing = db.query(Payment).filter(
+        Payment.user_id == user_id,
+        extract('year', Payment.created_at) == now.year,
+        extract('month', Payment.created_at) == now.month,
+        Payment.status == "paid"
+    ).first()
+
+    if existing:
+        raise HTTPException(status_code=400, detail="Payment already exists for this month")
+
+    # Create payment
+    payment = Payment(
+        user_id=user_id,
+        amount=amount,
+        currency="EUR", # Default to EUR as per user request context (Euro symbol mentioned) or make dynamic later
+        status="paid",
+        paid_at=now,
+        notes=f"Quick payment for {now.strftime('%B %Y')}",
+        created_at=now
+    )
+    
+    db.add(payment)
+    db.commit()
+    db.refresh(payment)
+    return payment

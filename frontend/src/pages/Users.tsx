@@ -1,104 +1,86 @@
-import { useEffect, useState, useMemo } from 'react';
-import { ArrowPathIcon, PencilIcon, ChevronUpIcon, ChevronDownIcon, MagnifyingGlassIcon, ClockIcon, XMarkIcon, CheckCircleIcon } from '@heroicons/react/24/outline';
-import { getUsers, syncPlexUsers, toggleUserActive, updateUser, getUserPaymentHistory, getCurrencySettings, User, UserPaymentHistory } from '../services/api';
+import React, { useEffect, useState, useMemo } from 'react';
+import {
+  ArrowPathIcon,
+  PencilIcon,
+  MagnifyingGlassIcon,
+  ClockIcon,
+  XMarkIcon,
+  CheckCircleIcon,
+  UserPlusIcon,
+  BanknotesIcon,
+  CheckIcon,
+  UserMinusIcon
+} from '@heroicons/react/24/outline';
+import {
+  getUsers,
+  syncPlexUsers,
+  toggleUserActive,
+  updateUser,
+  getUserPaymentHistory,
+  getCurrencySettings,
+  getMonthlyPrice,
+  inviteUser,
+  removeUserAccess,
+  reactivateUser,
+  createQuickPayment,
+  User,
+  UserPaymentHistory
+} from '../services/api';
 
-type SortField = 'username' | 'email' | 'is_active' | 'notes';
-type SortDirection = 'asc' | 'desc';
-
-const MONTH_NAMES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+// type SortField = 'username' | 'email' | 'is_active' | 'notes';
+// type SortDirection = 'asc' | 'desc'; // Unused for now
 
 export default function Users() {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
-  const [editingNotes, setEditingNotes] = useState<number | null>(null);
-  const [notesValue, setNotesValue] = useState('');
-  const [showDeleted, setShowDeleted] = useState(false);
-  const [sortField, setSortField] = useState<SortField>('username');
-  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [historyModal, setHistoryModal] = useState<UserPaymentHistory | null>(null);
-  const [loadingHistory, setLoadingHistory] = useState(false);
-  const [currencySymbol, setCurrencySymbol] = useState('$');
+  const [editingNote, setEditingNote] = useState<number | null>(null);
+  const [noteContent, setNoteContent] = useState('');
+  // const [showDeleted, setShowDeleted] = useState(false); // Unused for now
+  // const [sortField, setSortField] = useState<SortField>('username');
+  // const [sortDirection, setSortDirection] = useState<SortDirection>('asc'); // Unused for now
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filter, setFilter] = useState<'all' | 'active' | 'inactive' | 'deleted'>('all');
 
-  const fetchUsers = async (includeDeleted: boolean = showDeleted) => {
+  const [historyModal, setHistoryModal] = useState<UserPaymentHistory | null>(null);
+  // const [loadingHistory, setLoadingHistory] = useState(false); // Unused for now
+
+  const [currencySymbol, setCurrencySymbol] = useState('$');
+  const [monthlyPrice, setMonthlyPrice] = useState(0);
+
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviting, setInviting] = useState(false);
+  const [inviteMessage, setInviteMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+
+  const [processingPayment, setProcessingPayment] = useState<number | null>(null);
+
+  const fetchData = async () => {
     try {
-      const response = await getUsers(includeDeleted);
-      setUsers(response.data);
+      const [usersResponse, currencyResponse, priceResponse] = await Promise.all([
+        getUsers(true),
+        getCurrencySettings(),
+        getMonthlyPrice(),
+      ]);
+      setUsers(usersResponse.data);
+      setCurrencySymbol(currencyResponse.data.currency_symbol);
+      setMonthlyPrice(priceResponse.data.monthly_price);
     } catch (error) {
-      console.error('Error fetching users:', error);
+      console.error('Error fetching data:', error);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchUsers(showDeleted);
-    getCurrencySettings().then(res => setCurrencySymbol(res.data.currency_symbol));
-  }, [showDeleted]);
-
-  const filteredAndSortedUsers = useMemo(() => {
-    let filtered = users;
-
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase();
-      filtered = users.filter(u =>
-        u.username.toLowerCase().includes(query) ||
-        (u.email && u.email.toLowerCase().includes(query)) ||
-        (u.notes && u.notes.toLowerCase().includes(query))
-      );
-    }
-
-    return [...filtered].sort((a, b) => {
-      let aVal: string | boolean = '';
-      let bVal: string | boolean = '';
-
-      switch (sortField) {
-        case 'username':
-          aVal = a.username.toLowerCase();
-          bVal = b.username.toLowerCase();
-          break;
-        case 'email':
-          aVal = (a.email || '').toLowerCase();
-          bVal = (b.email || '').toLowerCase();
-          break;
-        case 'is_active':
-          aVal = a.is_active;
-          bVal = b.is_active;
-          break;
-        case 'notes':
-          aVal = (a.notes || '').toLowerCase();
-          bVal = (b.notes || '').toLowerCase();
-          break;
-      }
-
-      if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
-      if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
-      return 0;
-    });
-  }, [users, sortField, sortDirection, searchQuery]);
-
-  const handleSort = (field: SortField) => {
-    if (sortField === field) {
-      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortField(field);
-      setSortDirection('asc');
-    }
-  };
-
-  const SortIcon = ({ field }: { field: SortField }) => {
-    if (sortField !== field) return null;
-    return sortDirection === 'asc'
-      ? <ChevronUpIcon className="h-4 w-4 inline ml-1" />
-      : <ChevronDownIcon className="h-4 w-4 inline ml-1" />;
-  };
+    fetchData();
+  }, []);
 
   const handleSync = async () => {
     setSyncing(true);
     try {
       await syncPlexUsers();
-      await fetchUsers();
+      await fetchData();
     } catch (error) {
       console.error('Error syncing users:', error);
     } finally {
@@ -106,50 +88,129 @@ export default function Users() {
     }
   };
 
-  const handleToggleActive = async (userId: number) => {
+  const handleToggleActive = async (user: User) => {
     try {
-      const response = await toggleUserActive(userId);
-      setUsers(users.map((u) => (u.id === userId ? response.data : u)));
+      await toggleUserActive(user.id);
+      setUsers(users.map((u) => (u.id === user.id ? { ...u, is_active: !u.is_active } : u)));
     } catch (error) {
       console.error('Error toggling user status:', error);
     }
   };
 
-  const handleEditNotes = (user: User) => {
-    setEditingNotes(user.id);
-    setNotesValue(user.notes || '');
+  const startEditingNote = (user: User) => {
+    setEditingNote(user.id);
+    setNoteContent(user.notes || '');
   };
 
-  const handleSaveNotes = async () => {
-    if (editingNotes === null) return;
-
+  const saveNote = async (userId: number) => {
     try {
-      const response = await updateUser(editingNotes, { notes: notesValue });
-      setUsers(users.map((u) => (u.id === editingNotes ? response.data : u)));
+      await updateUser(userId, { notes: noteContent });
+      setUsers(users.map((u) => (u.id === userId ? { ...u, notes: noteContent } : u)));
+      setEditingNote(null);
     } catch (error) {
-      console.error('Error saving notes:', error);
+      console.error('Error updating note:', error);
     }
-
-    setEditingNotes(null);
-    setNotesValue('');
-  };
-
-  const handleCancelEdit = () => {
-    setEditingNotes(null);
-    setNotesValue('');
   };
 
   const handleViewHistory = async (userId: number) => {
-    setLoadingHistory(true);
+    // setLoadingHistory(true);
     try {
       const response = await getUserPaymentHistory(userId);
       setHistoryModal(response.data);
     } catch (error) {
       console.error('Error fetching payment history:', error);
     } finally {
-      setLoadingHistory(false);
+      // setLoadingHistory(false);
     }
   };
+
+  const handleQuickPay = async (user: User) => {
+    if (!monthlyPrice || monthlyPrice <= 0) {
+      alert("Por favor, configura el precio mensual en Ajustes primero.");
+      return;
+    }
+
+    if (!confirm(`¿Registrar pago de ${currencySymbol}${monthlyPrice} para ${user.username}?`)) {
+      return;
+    }
+
+    setProcessingPayment(user.id);
+    try {
+      await createQuickPayment(user.id);
+      alert("Pago registrado correctamente");
+      // Optionally refresh history if open or stats
+    } catch (error: any) {
+      console.error('Error processing quick payment:', error);
+      alert(error.response?.data?.detail || "Error al registrar el pago");
+    } finally {
+      setProcessingPayment(null);
+    }
+  };
+
+  const handleInviteUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setInviting(true);
+    setInviteMessage(null);
+
+    try {
+      await inviteUser(inviteEmail);
+      setInviteMessage({ type: 'success', text: `Invitación enviada a ${inviteEmail}` });
+      setInviteEmail('');
+      handleSync(); // Refresh list to show pending user if applicable
+      setTimeout(() => setShowInviteModal(false), 2000);
+    } catch (error: any) {
+      setInviteMessage({
+        type: 'error',
+        text: error.response?.data?.detail || 'Error al enviar invitación'
+      });
+    } finally {
+      setInviting(false);
+    }
+  };
+
+  const handleRemoveAccess = async (user: User) => {
+    if (!confirm(`¿Estás seguro que quieres quitar el acceso a la biblioteca para ${user.username}? Esta acción dejará de compartir el servidor con este usuario.`)) {
+      return;
+    }
+
+    try {
+      await removeUserAccess(user.id);
+      setUsers(users.map((u) => (u.id === user.id ? { ...u, deleted_from_plex: true, is_active: false } : u)));
+    } catch (error) {
+      console.error('Error removing user access:', error);
+      alert('Error al quitar acceso. Asegúrate que la conexión con Plex es correcta.');
+    }
+  };
+
+  const handleReactivateUser = async (user: User) => {
+    if (!confirm(`¿Quieres reactivar a ${user.username} y darle acceso a todas las bibliotecas nuevamente?`)) {
+      return;
+    }
+
+    try {
+      await reactivateUser(user.id);
+      setUsers(users.map((u) => (u.id === user.id ? { ...u, deleted_from_plex: false, is_active: true } : u)));
+      alert(`Usuario ${user.username} reactivado correctamente.`);
+    } catch (error) {
+      console.error('Error reactivating user:', error);
+      alert('Error al reactivar usuario.');
+    }
+  };
+
+  const filteredUsers = useMemo(() => {
+    return users.filter((user) => {
+      const matchesSearch =
+        user.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (user.notes && user.notes.toLowerCase().includes(searchTerm.toLowerCase()));
+
+      if (filter === 'active') return matchesSearch && user.is_active && !user.deleted_from_plex;
+      if (filter === 'inactive') return matchesSearch && !user.is_active && !user.deleted_from_plex;
+      if (filter === 'deleted') return matchesSearch && user.deleted_from_plex;
+
+      return matchesSearch && !user.deleted_from_plex;
+    });
+  }, [users, searchTerm, filter]);
 
   if (loading) {
     return (
@@ -161,41 +222,16 @@ export default function Users() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex justify-between items-center mb-8">
         <h1 className="text-3xl font-bold text-white">Usuarios</h1>
-        <div className="flex items-center space-x-4">
-          {/* Search */}
-          <div className="relative">
-            <MagnifyingGlassIcon className="h-5 w-5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Buscar usuarios..."
-              className="bg-plex-dark text-white border border-gray-700 rounded-lg pl-10 pr-4 py-2 focus:border-plex-yellow focus:outline-none w-64"
-            />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
-              >
-                <XMarkIcon className="h-4 w-4" />
-              </button>
-            )}
-          </div>
-          <label className="flex items-center cursor-pointer">
-            <span className="text-gray-400 text-sm mr-3">Mostrar eliminados</span>
-            <div className="relative">
-              <input
-                type="checkbox"
-                checked={showDeleted}
-                onChange={(e) => setShowDeleted(e.target.checked)}
-                className="sr-only"
-              />
-              <div className={`w-10 h-6 rounded-full transition-colors ${showDeleted ? 'bg-plex-yellow' : 'bg-gray-600'}`}></div>
-              <div className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${showDeleted ? 'translate-x-4' : ''}`}></div>
-            </div>
-          </label>
+        <div className="flex space-x-4">
+          <button
+            onClick={() => setShowInviteModal(true)}
+            className="flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+          >
+            <UserPlusIcon className="h-5 w-5 mr-2" />
+            Invitar Usuario
+          </button>
           <button
             onClick={handleSync}
             disabled={syncing}
@@ -207,266 +243,290 @@ export default function Users() {
         </div>
       </div>
 
-      {users.length === 0 ? (
-        <div className="bg-plex-dark rounded-lg p-8 text-center">
-          <p className="text-gray-400 mb-4">No se encontraron usuarios</p>
-          <p className="text-sm text-gray-500">
-            Haz click en "Sincronizar con Plex" para importar usuarios de tu servidor Plex
-          </p>
+      {/* Filters and Search */}
+      <div className="flex flex-col md:flex-row gap-4 mb-6">
+        <div className="relative flex-1">
+          <MagnifyingGlassIcon className="h-5 w-5 absolute left-3 top-3 text-gray-400" />
+          <input
+            type="text"
+            placeholder="Buscar usuarios..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full bg-plex-dark text-white border border-gray-700 rounded-lg pl-10 pr-4 py-2 focus:border-plex-yellow focus:outline-none"
+          />
         </div>
-      ) : (
-        <div className="bg-plex-dark rounded-lg overflow-hidden">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-gray-700">
-                <th
-                  className="text-left px-6 py-4 text-gray-400 font-medium cursor-pointer hover:text-white select-none"
-                  onClick={() => handleSort('username')}
-                >
-                  Usuario<SortIcon field="username" />
-                </th>
-                <th
-                  className="text-left px-6 py-4 text-gray-400 font-medium cursor-pointer hover:text-white select-none"
-                  onClick={() => handleSort('email')}
-                >
-                  Email<SortIcon field="email" />
-                </th>
-                <th
-                  className="text-left px-6 py-4 text-gray-400 font-medium cursor-pointer hover:text-white select-none"
-                  onClick={() => handleSort('is_active')}
-                >
-                  Estado<SortIcon field="is_active" />
-                </th>
-                <th
-                  className="text-left px-6 py-4 text-gray-400 font-medium cursor-pointer hover:text-white select-none"
-                  onClick={() => handleSort('notes')}
-                >
-                  Notas<SortIcon field="notes" />
-                </th>
-                <th className="text-left px-6 py-4 text-gray-400 font-medium">Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredAndSortedUsers.map((user) => (
-                <tr key={user.id} className={`border-b border-gray-700/50 hover:bg-gray-800/50 ${user.deleted_from_plex ? 'opacity-60' : ''}`}>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center">
-                      {user.thumb ? (
-                        <img
-                          src={user.thumb}
-                          alt={user.username}
-                          className={`w-10 h-10 rounded-full mr-3 ${user.deleted_from_plex ? 'grayscale' : ''}`}
-                        />
-                      ) : (
-                        <div className="w-10 h-10 rounded-full bg-gray-700 mr-3 flex items-center justify-center">
-                          <span className="text-gray-400 text-sm">
-                            {user.username.charAt(0).toUpperCase()}
-                          </span>
-                        </div>
-                      )}
-                      <div className="flex items-center space-x-2">
-                        <span className="text-white">{user.username}</span>
-                        {user.deleted_from_plex && (
-                          <span className="px-2 py-0.5 rounded text-xs bg-gray-500/20 text-gray-400">
-                            Eliminado
-                          </span>
-                        )}
-                      </div>
+        <div className="flex space-x-2">
+          {['all', 'active', 'inactive', 'deleted'].map((f) => (
+            <button
+              key={f}
+              onClick={() => setFilter(f as any)}
+              className={`px-4 py-2 rounded-lg capitalize ${filter === f
+                ? 'bg-plex-yellow text-plex-darker font-medium'
+                : 'bg-plex-dark text-gray-400 hover:text-white'
+                }`}
+            >
+              {f === 'all' ? 'Todos' : f === 'active' ? 'Activos' : f === 'inactive' ? 'Inactivos' : 'Eliminados'}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Users List */}
+      <div className="bg-plex-dark rounded-lg overflow-hidden">
+        <table className="w-full text-left">
+          <thead className="bg-plex-darker text-gray-400 uppercase text-xs">
+            <tr>
+              <th className="px-6 py-4">Usuario</th>
+              <th className="px-6 py-4">Estado</th>
+              <th className="px-6 py-4">Notas</th>
+              <th className="px-6 py-4 text-right">Acciones</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-700">
+            {filteredUsers.map((user) => (
+              <tr key={user.id} className="hover:bg-plex-darker/50 transition-colors">
+                <td className="px-6 py-4">
+                  <div className="flex items-center">
+                    <img
+                      src={user.thumb || 'https://www.plex.tv/wp-content/uploads/2021/08/plex-avatar-default.png'}
+                      alt={user.username}
+                      className="h-10 w-10 rounded-full mr-4"
+                    />
+                    <div>
+                      <div className="text-white font-medium">{user.username}</div>
+                      <div className="text-gray-500 text-sm">{user.email}</div>
                     </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className="text-gray-300 text-sm">{user.email || '-'}</span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span
-                      className={`px-2 py-1 rounded text-xs ${
-                        user.is_active
-                          ? 'bg-green-500/20 text-green-400'
-                          : 'bg-red-500/20 text-red-400'
-                      }`}
+                  </div>
+                </td>
+                <td className="px-6 py-4">
+                  {user.deleted_from_plex ? (
+                    <div className="flex items-center space-x-2">
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-900/50 text-red-400">
+                        Eliminado de Plex
+                      </span>
+                      <button
+                        onClick={() => handleReactivateUser(user)}
+                        className="text-xs text-blue-400 hover:text-blue-300 underline"
+                      >
+                        Reactivar (Dar Acceso)
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => handleToggleActive(user)}
+                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium transition-colors ${user.is_active
+                        ? 'bg-green-900/50 text-green-400 hover:bg-green-900/70'
+                        : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                        }`}
                     >
                       {user.is_active ? 'Activo' : 'Inactivo'}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4">
+                    </button>
+                  )}
+                </td>
+                <td className="px-6 py-4">
+                  {editingNote === user.id ? (
                     <div className="flex items-center space-x-2">
-                      <span className="text-gray-400 text-sm max-w-[200px] truncate">
+                      <input
+                        type="text"
+                        value={noteContent}
+                        onChange={(e) => setNoteContent(e.target.value)}
+                        className="bg-plex-darker text-white border border-gray-700 rounded px-2 py-1 text-sm focus:border-plex-yellow focus:outline-none"
+                        autoFocus
+                      />
+                      <button onClick={() => saveNote(user.id)} className="text-green-400 hover:text-green-300">
+                        <CheckIcon className="h-5 w-5" />
+                      </button>
+                      <button onClick={() => setEditingNote(null)} className="text-red-400 hover:text-red-300">
+                        <XMarkIcon className="h-5 w-5" />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="group flex items-center space-x-2">
+                      <span className="text-gray-300 text-sm truncate max-w-[200px]">
                         {user.notes || '-'}
                       </span>
                       <button
-                        onClick={() => handleEditNotes(user)}
-                        className="p-1 text-gray-500 hover:text-plex-yellow"
-                        title="Editar notas"
+                        onClick={() => startEditingNote(user)}
+                        className="text-gray-500 hover:text-plex-yellow opacity-0 group-hover:opacity-100 transition-opacity"
                       >
                         <PencilIcon className="h-4 w-4" />
                       </button>
                     </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center space-x-2">
+                  )}
+                </td>
+                <td className="px-6 py-4 text-right">
+                  <div className="flex items-center justify-end space-x-3">
+                    <button
+                      onClick={() => handleQuickPay(user)}
+                      disabled={!!processingPayment}
+                      title={`Pago Rápido (${currencySymbol}${monthlyPrice})`}
+                      className="text-green-400 hover:text-green-300 disabled:opacity-50"
+                    >
+                      {processingPayment === user.id ? (
+                        <ArrowPathIcon className="h-5 w-5 animate-spin" />
+                      ) : (
+                        <BanknotesIcon className="h-5 w-5" />
+                      )}
+                    </button>
+                    <button
+                      onClick={() => handleViewHistory(user.id)}
+                      className="text-plex-yellow hover:text-plex-orange"
+                      title="Ver Historial"
+                    >
+                      <ClockIcon className="h-5 w-5" />
+                    </button>
+                    {!user.deleted_from_plex && (
                       <button
-                        onClick={() => handleViewHistory(user.id)}
-                        className="text-sm px-3 py-1 rounded bg-blue-500/20 text-blue-400 hover:bg-blue-500/30"
-                        title="Ver historial de pagos"
+                        onClick={() => handleRemoveAccess(user)}
+                        className="text-red-400 hover:text-red-300"
+                        title="Quitar Acceso (Dejar de compartir)"
                       >
-                        <ClockIcon className="h-4 w-4" />
+                        <UserMinusIcon className="h-5 w-5" />
                       </button>
-                      <button
-                        onClick={() => handleToggleActive(user.id)}
-                        className={`text-sm px-3 py-1 rounded ${
-                          user.is_active
-                            ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
-                            : 'bg-green-500/20 text-green-400 hover:bg-green-500/30'
-                        }`}
-                      >
-                        {user.is_active ? 'Desactivar' : 'Activar'}
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+                    )}
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
 
-      {/* Edit Notes Modal */}
-      {editingNotes !== null && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-plex-dark rounded-lg p-6 w-full max-w-md">
-            <h2 className="text-xl font-bold text-white mb-4">Editar Notas</h2>
-            <textarea
-              value={notesValue}
-              onChange={(e) => setNotesValue(e.target.value)}
-              rows={4}
-              placeholder="Escribe notas sobre este usuario..."
-              className="w-full bg-plex-darker text-white border border-gray-700 rounded-lg px-4 py-2 focus:border-plex-yellow focus:outline-none"
-            />
-            <div className="flex space-x-3 mt-4">
+      {/* Invite User Modal */}
+      {showInviteModal && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50">
+          <div className="bg-plex-dark rounded-lg p-6 max-w-md w-full">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-bold text-white">Invitar Usuario a Plex</h3>
               <button
-                onClick={handleCancelEdit}
-                className="flex-1 px-4 py-2 border border-gray-600 text-gray-300 rounded-lg hover:bg-gray-800"
+                onClick={() => setShowInviteModal(false)}
+                className="text-gray-400 hover:text-white"
               >
-                Cancelar
-              </button>
-              <button
-                onClick={handleSaveNotes}
-                className="flex-1 px-4 py-2 bg-plex-yellow text-plex-darker font-medium rounded-lg hover:bg-plex-orange"
-              >
-                Guardar
+                <XMarkIcon className="h-6 w-6" />
               </button>
             </div>
+
+            <form onSubmit={handleInviteUser}>
+              <div className="mb-4">
+                <label className="block text-gray-400 text-sm mb-2">Correo Electrónico</label>
+                <input
+                  type="email"
+                  value={inviteEmail}
+                  onChange={(e) => setInviteEmail(e.target.value)}
+                  placeholder="usuario@ejemplo.com"
+                  className="w-full bg-plex-darker text-white border border-gray-700 rounded-lg px-4 py-2 focus:border-plex-yellow focus:outline-none"
+                  required
+                />
+              </div>
+
+              {inviteMessage && (
+                <div className={`mb-4 p-3 rounded text-sm ${inviteMessage.type === 'success' ? 'bg-green-900/50 text-green-400' : 'bg-red-900/50 text-red-400'
+                  }`}>
+                  {inviteMessage.text}
+                </div>
+              )}
+
+              <div className="flex justify-end space-x-3">
+                <button
+                  type="button"
+                  onClick={() => setShowInviteModal(false)}
+                  className="px-4 py-2 text-gray-400 hover:text-white"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={inviting}
+                  className="px-4 py-2 bg-plex-yellow text-plex-darker font-medium rounded-lg hover:bg-plex-orange transition-colors disabled:opacity-50"
+                >
+                  {inviting ? 'Enviando...' : 'Enviar Invitación'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
 
-      {/* Payment History Modal */}
-      {(historyModal || loadingHistory) && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-plex-dark rounded-lg p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
-            {loadingHistory ? (
-              <div className="flex items-center justify-center py-12">
-                <div className="text-gray-400">Cargando historial...</div>
+      {/* History Modal */}
+      {historyModal && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50">
+          <div className="bg-plex-dark rounded-lg p-6 max-w-2xl w-full max-h-[80vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-xl font-bold text-white">Historial de Pagos</h3>
+              <button onClick={() => setHistoryModal(null)} className="text-gray-400 hover:text-white">
+                <XMarkIcon className="h-6 w-6" />
+              </button>
+            </div>
+
+            <div className="mb-6 flex items-center">
+              <img
+                src={historyModal.user.thumb || 'https://www.plex.tv/wp-content/uploads/2021/08/plex-avatar-default.png'}
+                alt={historyModal.user.username}
+                className="h-12 w-12 rounded-full mr-4"
+              />
+              <div>
+                <div className="text-white font-medium text-lg">{historyModal.user.username}</div>
+                <div className="text-gray-500">{historyModal.user.email}</div>
               </div>
-            ) : historyModal && (
-              <>
-                <div className="flex items-center justify-between mb-6">
-                  <div className="flex items-center">
-                    {historyModal.user.thumb ? (
-                      <img
-                        src={historyModal.user.thumb}
-                        alt={historyModal.user.username}
-                        className="w-12 h-12 rounded-full mr-4"
-                      />
-                    ) : (
-                      <div className="w-12 h-12 rounded-full bg-gray-700 mr-4 flex items-center justify-center">
-                        <span className="text-gray-400 text-lg">
-                          {historyModal.user.username.charAt(0).toUpperCase()}
-                        </span>
-                      </div>
-                    )}
-                    <div>
-                      <h2 className="text-xl font-bold text-white">{historyModal.user.username}</h2>
-                      <p className="text-gray-400 text-sm">{historyModal.user.email || 'Sin email'}</p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => setHistoryModal(null)}
-                    className="text-gray-400 hover:text-white"
-                  >
-                    <XMarkIcon className="h-6 w-6" />
-                  </button>
-                </div>
+            </div>
 
-                {/* Summary */}
-                <div className="bg-plex-darker rounded-lg p-4 mb-6">
-                  <div className="text-center">
-                    <p className="text-gray-400 text-sm">Total pagado (todos los años)</p>
-                    <p className="text-3xl font-bold text-plex-yellow">
-                      {currencySymbol}{Number(historyModal.total_all_time).toFixed(2)}
-                    </p>
-                  </div>
+            <div className="space-y-6">
+              <div className="bg-plex-darker p-4 rounded-lg">
+                <div className="text-gray-400 text-sm mb-1">Total Pagado (Histórico)</div>
+                <div className="text-2xl font-bold text-plex-yellow">
+                  {currencySymbol}{historyModal.total_all_time.toFixed(2)}
                 </div>
+              </div>
 
-                {/* Years */}
-                {historyModal.years.length === 0 ? (
-                  <div className="text-center py-8">
-                    <p className="text-gray-400">No hay historial de pagos</p>
+              {historyModal.years.map((yearData) => (
+                <div key={yearData.year} className="border border-gray-700 rounded-lg overflow-hidden">
+                  <div className="bg-plex-darker px-4 py-3 flex justify-between items-center">
+                    <span className="font-bold text-white">{yearData.year}</span>
+                    <span className="text-green-400 font-medium">
+                      {currencySymbol}{yearData.total_paid.toFixed(2)}
+                    </span>
                   </div>
-                ) : (
-                  <div className="space-y-6">
-                    {historyModal.years.map((yearData) => (
-                      <div key={yearData.year} className="bg-plex-darker rounded-lg p-4">
-                        <div className="flex items-center justify-between mb-4">
-                          <h3 className="text-lg font-semibold text-white">{yearData.year}</h3>
-                          <span className="text-plex-yellow font-medium">
-                            Total: {currencySymbol}{Number(yearData.total_paid).toFixed(2)}
-                          </span>
+                  <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2 p-4">
+                    {Object.entries(yearData.payments).map(([month, payment]) => {
+                      const amount = payment.amount;
+                      const isPaid = payment.is_paid || payment.amount > 0;
+                      // @ts-ignore
+                      const monthName = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'][parseInt(month) - 1];
+
+                      return (
+                        <div
+                          key={month}
+                          className={`text-center p-2 rounded ${isPaid
+                            ? 'bg-green-500/20 border border-green-500/30'
+                            : 'bg-gray-700/30 border border-gray-700/50'
+                            }`}
+                          title={isPaid && payment?.paid_at ? `Pagado: ${new Date(payment.paid_at).toLocaleDateString()}` : 'No pagado'}
+                        >
+                          <p className="text-xs text-gray-400">{monthName}</p>
+                          {isPaid ? (
+                            <CheckCircleIcon className="h-5 w-5 mx-auto text-green-400 mt-1" />
+                          ) : (
+                            <p className="text-sm text-gray-500 mt-1">-</p>
+                          )}
+                          <p className={`text-xs mt-1 ${isPaid ? 'text-green-400' : 'text-gray-500'}`}>
+                            {amount > 0 ? `${currencySymbol}${amount}` : '-'}
+                          </p>
                         </div>
-                        <div className="grid grid-cols-12 gap-2">
-                          {MONTH_NAMES.map((monthName, idx) => {
-                            const month = idx + 1;
-                            const payment = yearData.payments[month];
-                            const isPaid = payment?.is_paid || false;
-                            const amount = payment?.amount || 0;
-                            return (
-                              <div
-                                key={month}
-                                className={`text-center p-2 rounded ${
-                                  isPaid
-                                    ? 'bg-green-500/20 border border-green-500/30'
-                                    : 'bg-gray-700/30 border border-gray-700/50'
-                                }`}
-                                title={isPaid && payment?.paid_at ? `Pagado: ${new Date(payment.paid_at).toLocaleDateString()}` : 'No pagado'}
-                              >
-                                <p className="text-xs text-gray-400">{monthName}</p>
-                                {isPaid ? (
-                                  <CheckCircleIcon className="h-5 w-5 mx-auto text-green-400 mt-1" />
-                                ) : (
-                                  <p className="text-sm text-gray-500 mt-1">-</p>
-                                )}
-                                <p className={`text-xs mt-1 ${isPaid ? 'text-green-400' : 'text-gray-500'}`}>
-                                  {amount > 0 ? `${currencySymbol}${amount}` : '-'}
-                                </p>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
-                )}
-
-                <div className="flex justify-end mt-6">
-                  <button
-                    onClick={() => setHistoryModal(null)}
-                    className="px-6 py-2 bg-plex-yellow text-plex-darker font-medium rounded-lg hover:bg-plex-orange"
-                  >
-                    Cerrar
-                  </button>
                 </div>
-              </>
-            )}
+              ))}
+            </div>
+
+            <div className="flex justify-end mt-6">
+              <button
+                onClick={() => setHistoryModal(null)}
+                className="px-6 py-2 bg-plex-yellow text-plex-darker font-medium rounded-lg hover:bg-plex-orange"
+              >
+                Cerrar
+              </button>
+            </div>
           </div>
         </div>
       )}

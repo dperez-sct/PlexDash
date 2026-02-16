@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from typing import Optional
 
 from app.database import get_db
-from app.models.settings import Settings, PLEX_URL_KEY, PLEX_TOKEN_KEY, CURRENCY_SYMBOL_KEY
+from app.models.settings import Settings, PLEX_URL_KEY, PLEX_TOKEN_KEY, CURRENCY_SYMBOL_KEY, MONTHLY_PRICE_KEY
 from app.services.plex import plex_service
 
 router = APIRouter(prefix="/settings", tags=["settings"])
@@ -97,3 +97,25 @@ def update_currency_settings(settings: CurrencySettings, db: Session = Depends(g
     """Update currency symbol."""
     set_setting(db, CURRENCY_SYMBOL_KEY, settings.currency_symbol)
     return {"message": "Currency settings updated successfully"}
+
+
+class MonthlyPriceSettings(BaseModel):
+    monthly_price: float
+
+
+class MonthlyPriceSettingsResponse(BaseModel):
+    monthly_price: float = 0.0
+
+
+@router.get("/price", response_model=MonthlyPriceSettingsResponse)
+def get_monthly_price_settings(db: Session = Depends(get_db)):
+    """Get current monthly price."""
+    price = get_setting(db, MONTHLY_PRICE_KEY)
+    return MonthlyPriceSettingsResponse(monthly_price=float(price) if price else 0.0)
+
+
+@router.put("/price")
+def update_monthly_price_settings(settings: MonthlyPriceSettings, db: Session = Depends(get_db)):
+    """Update monthly price."""
+    set_setting(db, MONTHLY_PRICE_KEY, str(settings.monthly_price))
+    return {"message": "Monthly price settings updated successfully"}
