@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   HomeIcon,
@@ -5,6 +6,8 @@ import {
   CreditCardIcon,
   Cog6ToothIcon,
   ArrowRightOnRectangleIcon,
+  Bars3Icon,
+  XMarkIcon,
 } from '@heroicons/react/24/outline';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -23,18 +26,55 @@ export default function Layout({ children }: LayoutProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const { username, logout } = useAuth();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const handleLogout = () => {
     logout();
     navigate('/login');
   };
 
+  const handleNavClick = () => {
+    // Close sidebar on mobile when a link is clicked
+    setSidebarOpen(false);
+  };
+
   return (
     <div className="min-h-screen bg-plex-darker">
+      {/* Mobile top bar */}
+      <div className="md:hidden fixed top-0 left-0 right-0 z-40 bg-plex-dark border-b border-gray-700 flex items-center h-14 px-4">
+        <button
+          onClick={() => setSidebarOpen(true)}
+          className="p-2 text-gray-400 hover:text-white rounded-lg transition-colors"
+          aria-label="Abrir menú"
+        >
+          <Bars3Icon className="h-6 w-6" />
+        </button>
+        <h1 className="text-xl font-bold text-plex-yellow ml-3">PlexDash</h1>
+      </div>
+
+      {/* Mobile overlay */}
+      {sidebarOpen && (
+        <div
+          className="md:hidden fixed inset-0 z-40 bg-black/60 backdrop-blur-sm transition-opacity"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
       {/* Sidebar */}
-      <div className="fixed inset-y-0 left-0 w-64 bg-plex-dark flex flex-col">
-        <div className="flex h-16 items-center px-6">
+      <div
+        className={`fixed inset-y-0 left-0 w-64 bg-plex-dark flex flex-col z-50 transition-transform duration-300 ease-in-out ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+          } md:translate-x-0`}
+      >
+        <div className="flex h-16 items-center justify-between px-6">
           <h1 className="text-2xl font-bold text-plex-yellow">PlexDash</h1>
+          {/* Close button - mobile only */}
+          <button
+            onClick={() => setSidebarOpen(false)}
+            className="md:hidden p-1 text-gray-400 hover:text-white rounded-lg transition-colors"
+            aria-label="Cerrar menú"
+          >
+            <XMarkIcon className="h-6 w-6" />
+          </button>
         </div>
         <nav className="mt-6 px-3 flex-1">
           {navigation.map((item) => {
@@ -43,11 +83,11 @@ export default function Layout({ children }: LayoutProps) {
               <Link
                 key={item.name}
                 to={item.href}
-                className={`flex items-center px-3 py-2 my-1 rounded-lg text-sm font-medium transition-colors ${
-                  isActive
+                onClick={handleNavClick}
+                className={`flex items-center px-3 py-2 my-1 rounded-lg text-sm font-medium transition-colors ${isActive
                     ? 'bg-plex-yellow text-plex-darker'
                     : 'text-gray-300 hover:bg-gray-800 hover:text-white'
-                }`}
+                  }`}
               >
                 <item.icon className="mr-3 h-5 w-5" />
                 {item.name}
@@ -72,8 +112,8 @@ export default function Layout({ children }: LayoutProps) {
       </div>
 
       {/* Main content */}
-      <div className="pl-64">
-        <main className="p-8">{children}</main>
+      <div className="md:pl-64">
+        <main className="p-4 pt-18 md:p-8 md:pt-8">{children}</main>
       </div>
     </div>
   );

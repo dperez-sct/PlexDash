@@ -222,23 +222,23 @@ export default function Users() {
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-8">
-        <h1 className="text-3xl font-bold text-white">Usuarios</h1>
-        <div className="flex space-x-4">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
+        <h1 className="text-2xl md:text-3xl font-bold text-white">Usuarios</h1>
+        <div className="flex space-x-2 sm:space-x-4">
           <button
             onClick={() => setShowInviteModal(true)}
-            className="flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+            className="flex items-center px-3 sm:px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm sm:text-base"
           >
-            <UserPlusIcon className="h-5 w-5 mr-2" />
-            Invitar Usuario
+            <UserPlusIcon className="h-5 w-5 sm:mr-2" />
+            <span className="hidden sm:inline">Invitar Usuario</span>
           </button>
           <button
             onClick={handleSync}
             disabled={syncing}
-            className="flex items-center px-4 py-2 bg-plex-yellow text-plex-darker font-medium rounded-lg hover:bg-plex-orange transition-colors disabled:opacity-50"
+            className="flex items-center px-3 sm:px-4 py-2 bg-plex-yellow text-plex-darker font-medium rounded-lg hover:bg-plex-orange transition-colors disabled:opacity-50 text-sm sm:text-base"
           >
-            <ArrowPathIcon className={`h-5 w-5 mr-2 ${syncing ? 'animate-spin' : ''}`} />
-            {syncing ? 'Sincronizando...' : 'Sincronizar con Plex'}
+            <ArrowPathIcon className={`h-5 w-5 sm:mr-2 ${syncing ? 'animate-spin' : ''}`} />
+            <span className="hidden sm:inline">{syncing ? 'Sincronizando...' : 'Sincronizar con Plex'}</span>
           </button>
         </div>
       </div>
@@ -272,8 +272,8 @@ export default function Users() {
       </div>
 
       {/* Users List */}
-      <div className="bg-plex-dark rounded-lg overflow-hidden">
-        <table className="w-full text-left">
+      <div className="bg-plex-dark rounded-lg overflow-hidden overflow-x-auto">
+        <table className="w-full text-left min-w-[700px]">
           <thead className="bg-plex-darker text-gray-400 uppercase text-xs">
             <tr>
               <th className="px-6 py-4">Usuario</th>
