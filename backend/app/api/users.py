@@ -9,6 +9,7 @@ from app.models.user import User
 from app.models.subscription import Subscription
 from app.schemas import User as UserSchema, UserCreate, UserUpdate, SubscriptionCreate, Subscription as SubscriptionSchema
 from app.services.plex import plex_service
+from app.api.audit import log_action
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -52,6 +53,11 @@ def toggle_user_active(user_id: int, db: Session = Depends(get_db)):
     user.is_active = not user.is_active
     db.commit()
     db.refresh(user)
+
+    log_action(db, "user_toggled", "user", user.id, {
+        "username": user.username, "is_active": user.is_active
+    })
+
     return user
 
 
@@ -109,6 +115,13 @@ async def sync_plex_users(db: Session = Depends(get_db)):
     ).update({User.deleted_from_plex: True}, synchronize_session=False)
 
     db.commit()
+
+    # Audit log
+    log_action(db, "users_synced", "user", None, {
+        "total": len(plex_users), "new": synced,
+        "deleted": deleted, "restored": restored
+    })
+
     return {
         "message": f"Synced {synced} new users, {deleted} marked as deleted, {restored} restored",
         "total": len(plex_users),

@@ -8,6 +8,9 @@ import Dashboard from './pages/Dashboard';
 import Users from './pages/Users';
 import Payments from './pages/Payments';
 import Settings from './pages/Settings';
+import AuditLog from './pages/AuditLog';
+import UserDetail from './pages/UserDetail';
+import Expenses from './pages/Expenses';
 
 function App() {
   return (
@@ -23,7 +26,10 @@ function App() {
                   <Routes>
                     <Route path="/" element={<Dashboard />} />
                     <Route path="/users" element={<Users />} />
+                    <Route path="/users/:id" element={<UserDetail />} />
                     <Route path="/payments" element={<Payments />} />
+                    <Route path="/expenses" element={<Expenses />} />
+                    <Route path="/activity" element={<AuditLog />} />
                     <Route path="/settings" element={<Settings />} />
                   </Routes>
                 </Layout>

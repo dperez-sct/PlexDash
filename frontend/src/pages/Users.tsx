@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   ArrowPathIcon,
   PencilIcon,
@@ -31,6 +32,7 @@ import {
 // type SortDirection = 'asc' | 'desc'; // Unused for now
 
 export default function Users() {
+  const navigate = useNavigate();
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
@@ -45,7 +47,7 @@ export default function Users() {
   const [historyModal, setHistoryModal] = useState<UserPaymentHistory | null>(null);
   // const [loadingHistory, setLoadingHistory] = useState(false); // Unused for now
 
-  const [currencySymbol, setCurrencySymbol] = useState('$');
+  const [currencySymbol, setCurrencySymbol] = useState('€');
   const [monthlyPrice, setMonthlyPrice] = useState(0);
 
   const [showInviteModal, setShowInviteModal] = useState(false);
@@ -293,7 +295,7 @@ export default function Users() {
                       className="h-10 w-10 rounded-full mr-4"
                     />
                     <div>
-                      <div className="text-white font-medium">{user.username}</div>
+                      <div className="text-white font-medium cursor-pointer hover:text-plex-yellow transition-colors" onClick={() => navigate(`/users/${user.id}`)}>{user.username}</div>
                       <div className="text-gray-500 text-sm">{user.email}</div>
                     </div>
                   </div>

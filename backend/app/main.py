@@ -7,9 +7,11 @@ import os
 
 from app.config import get_settings
 from app.database import engine, Base, SessionLocal
-from app.api import users, payments, dashboard, settings as settings_router, monthly_payments, auth
+from app.api import users, payments, dashboard, settings as settings_router, monthly_payments, auth, audit, expenses
 from app.api.auth import get_current_user
 from app.services.plex import plex_service
+import app.models.audit_log  # noqa: ensure table is created
+import app.models.expense  # noqa: ensure table is created
 
 settings = get_settings()
 
@@ -53,6 +55,8 @@ app.include_router(payments.router, prefix="/api", dependencies=protected_depend
 app.include_router(dashboard.router, prefix="/api", dependencies=protected_dependencies)
 app.include_router(settings_router.router, prefix="/api", dependencies=protected_dependencies)
 app.include_router(monthly_payments.router, prefix="/api", dependencies=protected_dependencies)
+app.include_router(audit.router, prefix="/api", dependencies=protected_dependencies)
+app.include_router(expenses.router, prefix="/api", dependencies=protected_dependencies)
 
 
 @app.get("/health")

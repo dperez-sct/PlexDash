@@ -1,7 +1,7 @@
 from pydantic import BaseModel
 from datetime import datetime
 from decimal import Decimal
-from typing import Optional, Dict
+from typing import Optional, Dict, List
 
 
 # User schemas
@@ -35,7 +35,7 @@ class User(UserBase):
 class SubscriptionBase(BaseModel):
     plan_name: str = "Standard"
     amount: Decimal
-    currency: str = "USD"
+    currency: str = "EUR"
 
 
 class SubscriptionCreate(SubscriptionBase):
@@ -64,7 +64,7 @@ class Subscription(SubscriptionBase):
 # Payment schemas
 class PaymentBase(BaseModel):
     amount: Decimal
-    currency: str = "USD"
+    currency: str = "EUR"
     payment_method: Optional[str] = None
     notes: Optional[str] = None
     due_date: Optional[datetime] = None
@@ -137,3 +137,52 @@ class UserYearPayments(BaseModel):
     username: str
     thumb: Optional[str] = None
     payments: Dict[int, MonthlyPayment]  # month -> payment data
+
+
+# Expense schemas
+EXPENSE_CATEGORIES = [
+    "hardware", "licenses", "hosting", "plex_pass",
+    "domain", "subscriptions", "other"
+]
+
+EXPENSE_RECURRENCES = ["monthly", "yearly", "one_time"]
+
+
+class ExpenseBase(BaseModel):
+    name: str
+    category: str = "other"
+    amount: Decimal
+    is_recurring: bool = False
+    recurrence: str = "one_time"
+    date: datetime
+    notes: Optional[str] = None
+
+
+class ExpenseCreate(ExpenseBase):
+    pass
+
+
+class ExpenseUpdate(BaseModel):
+    name: Optional[str] = None
+    category: Optional[str] = None
+    amount: Optional[Decimal] = None
+    is_recurring: Optional[bool] = None
+    recurrence: Optional[str] = None
+    date: Optional[datetime] = None
+    notes: Optional[str] = None
+
+
+class Expense(ExpenseBase):
+    id: int
+    created_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class ExpenseSummary(BaseModel):
+    total_expenses: Decimal
+    total_income: Decimal
+    net_profit: Decimal
+    monthly_avg_expense: Decimal
+    by_category: Dict[str, Decimal]

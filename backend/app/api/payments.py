@@ -8,7 +8,9 @@ from app.database import get_db
 from app.models.payment import Payment
 from app.models.user import User
 from app.models.settings import Settings, MONTHLY_PRICE_KEY
+from app.models.monthly_payment import MonthlyPayment
 from app.schemas import Payment as PaymentSchema, PaymentCreate, PaymentUpdate
+from app.api.audit import log_action
 
 router = APIRouter(prefix="/payments", tags=["payments"])
 
@@ -76,6 +78,15 @@ def mark_payment_paid(payment_id: int, db: Session = Depends(get_db)):
     payment.paid_at = datetime.utcnow()
     db.commit()
     db.refresh(payment)
+
+    log_action(
+        db, 
+        action="mark_payment_paid", 
+        entity_type="payment", 
+        entity_id=payment.id,
+        details={"amount": payment.amount, "user_id": payment.user_id}
+    )
+
     return payment
 
 
@@ -129,6 +140,38 @@ def create_quick_payment(user_id: int, db: Session = Depends(get_db)):
     )
     
     db.add(payment)
+    
+    # Also update the MonthlyPayment table so it reflects in the dashboard
+    monthly = db.query(MonthlyPayment).filter(
+        MonthlyPayment.user_id == user_id,
+        MonthlyPayment.year == now.year,
+        MonthlyPayment.month == now.month
+    ).first()
+    
+    if not monthly:
+        monthly = MonthlyPayment(
+            user_id=user_id,
+            year=now.year,
+            month=now.month,
+            amount=amount,
+            is_paid=True,
+            paid_at=now
+        )
+        db.add(monthly)
+    else:
+        monthly.is_paid = True
+        monthly.paid_at = now
+        monthly.amount = amount
+
     db.commit()
     db.refresh(payment)
+
+    log_action(
+        db, 
+        action="create_quick_payment", 
+        entity_type="payment", 
+        entity_id=payment.id,
+        details={"amount": payment.amount, "user_id": payment.user_id, "month": now.month, "year": now.year}
+    )
+
     return payment

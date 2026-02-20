@@ -8,6 +8,8 @@ import {
   ArrowRightOnRectangleIcon,
   Bars3Icon,
   XMarkIcon,
+  ClipboardDocumentListIcon,
+  BanknotesIcon,
 } from '@heroicons/react/24/outline';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -19,6 +21,8 @@ const navigation = [
   { name: 'Dashboard', href: '/', icon: HomeIcon },
   { name: 'Usuarios', href: '/users', icon: UsersIcon },
   { name: 'Pagos', href: '/payments', icon: CreditCardIcon },
+  { name: 'Gastos', href: '/expenses', icon: BanknotesIcon },
+  { name: 'Actividad', href: '/activity', icon: ClipboardDocumentListIcon },
   { name: 'Ajustes', href: '/settings', icon: Cog6ToothIcon },
 ];
 
@@ -85,8 +89,8 @@ export default function Layout({ children }: LayoutProps) {
                 to={item.href}
                 onClick={handleNavClick}
                 className={`flex items-center px-3 py-2 my-1 rounded-lg text-sm font-medium transition-colors ${isActive
-                    ? 'bg-plex-yellow text-plex-darker'
-                    : 'text-gray-300 hover:bg-gray-800 hover:text-white'
+                  ? 'bg-plex-yellow text-plex-darker'
+                  : 'text-gray-300 hover:bg-gray-800 hover:text-white'
                   }`}
               >
                 <item.icon className="mr-3 h-5 w-5" />

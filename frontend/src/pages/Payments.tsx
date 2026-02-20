@@ -1,13 +1,16 @@
 import { useEffect, useState, useCallback } from 'react';
-import { ChevronLeftIcon, ChevronRightIcon, CheckCircleIcon, XCircleIcon } from '@heroicons/react/24/outline';
+import { ChevronLeftIcon, ChevronRightIcon, CheckCircleIcon, XCircleIcon, ArrowDownTrayIcon } from '@heroicons/react/24/outline';
 import {
   getYearPayments,
   updateMonthPayment,
   getCurrencySettings,
   getMonthlyPrice,
+  bulkMarkPaid,
+  bulkMarkUnpaid,
   UserYearPayments,
   MonthlyPayment,
 } from '../services/api';
+import { exportYearPayments } from '../services/api';
 
 const MONTHS = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
 
@@ -19,7 +22,7 @@ export default function Payments() {
   const [loading, setLoading] = useState(true);
   const [showInactive, setShowInactive] = useState(false);
   const [showDeleted, setShowDeleted] = useState(false);
-  const [currencySymbol, setCurrencySymbol] = useState('$');
+  const [currencySymbol, setCurrencySymbol] = useState('€');
   const [monthlyPrice, setMonthlyPrice] = useState(0);
 
   // Selection State
@@ -28,6 +31,8 @@ export default function Payments() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [showUnpayModal, setShowUnpayModal] = useState(false);
+  const [bulkMenuMonth, setBulkMenuMonth] = useState<number | null>(null);
+  const [bulkProcessing, setBulkProcessing] = useState(false);
 
   useEffect(() => {
     getCurrencySettings().then((res) => setCurrencySymbol(res.data.currency_symbol));
@@ -224,6 +229,14 @@ export default function Payments() {
               <ChevronRightIcon className="h-5 w-5" />
             </button>
           </div>
+          {/* Export CSV */}
+          <button
+            onClick={() => exportYearPayments(year)}
+            className="p-2 text-gray-400 hover:text-plex-yellow hover:bg-gray-700 rounded-lg transition-colors"
+            title="Exportar CSV"
+          >
+            <ArrowDownTrayIcon className="h-5 w-5" />
+          </button>
         </div>
       </div>
 
@@ -247,9 +260,38 @@ export default function Payments() {
                 {MONTHS.map((month, index) => (
                   <th
                     key={index}
-                    className="text-center px-1 py-3 text-gray-400 font-medium min-w-[60px] text-sm"
+                    className="text-center px-1 py-3 text-gray-400 font-medium min-w-[60px] text-sm relative group"
                   >
-                    {month}
+                    <button
+                      onClick={() => setBulkMenuMonth(bulkMenuMonth === index + 1 ? null : index + 1)}
+                      className="hover:text-plex-yellow transition-colors"
+                    >
+                      {month}
+                    </button>
+                    {bulkMenuMonth === index + 1 && (
+                      <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 bg-plex-darker border border-gray-700 rounded-lg shadow-xl z-30 min-w-[140px]">
+                        <button
+                          disabled={bulkProcessing}
+                          onClick={async () => {
+                            setBulkProcessing(true);
+                            try { await bulkMarkPaid(year, index + 1); await fetchData(); } finally { setBulkProcessing(false); setBulkMenuMonth(null); }
+                          }}
+                          className="w-full text-left px-3 py-2 text-sm text-green-400 hover:bg-gray-800 rounded-t-lg disabled:opacity-50"
+                        >
+                          ✓ Marcar todos pagado
+                        </button>
+                        <button
+                          disabled={bulkProcessing}
+                          onClick={async () => {
+                            setBulkProcessing(true);
+                            try { await bulkMarkUnpaid(year, index + 1); await fetchData(); } finally { setBulkProcessing(false); setBulkMenuMonth(null); }
+                          }}
+                          className="w-full text-left px-3 py-2 text-sm text-red-400 hover:bg-gray-800 rounded-b-lg disabled:opacity-50"
+                        >
+                          ✗ Marcar todos no pagado
+                        </button>
+                      </div>
+                    )}
                   </th>
                 ))}
                 <th className="text-right px-4 py-3 text-gray-400 font-medium min-w-[100px]">
@@ -353,13 +395,13 @@ export default function Payments() {
       {/* Floating Action Bar */}
       {selectedCells.size > 0 && (
         <div className={`fixed bottom-6 left-1/2 transform -translate-x-1/2 w-[90%] max-w-lg border shadow-2xl rounded-2xl p-4 flex items-center justify-between z-50 animate-in slide-in-from-bottom-5 ${selectionMode === 'unpay'
-            ? 'bg-plex-darker border-red-500/50'
-            : 'bg-plex-darker border-gray-700'
+          ? 'bg-plex-darker border-red-500/50'
+          : 'bg-plex-darker border-gray-700'
           }`}>
           <div className="flex items-center space-x-3">
             <div className={`font-bold w-8 h-8 rounded-full flex items-center justify-center ${selectionMode === 'unpay'
-                ? 'bg-red-500 text-white'
-                : 'bg-plex-yellow text-plex-darker'
+              ? 'bg-red-500 text-white'
+              : 'bg-plex-yellow text-plex-darker'
               }`}>
               {selectedCells.size}
             </div>

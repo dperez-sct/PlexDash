@@ -141,3 +141,134 @@ def get_upcoming_dues(limit: int = 5, db: Session = Depends(get_db)):
         }
         for mp, user in payments
     ]
+
+
+@router.get("/monthly-revenue/{year}")
+def get_monthly_revenue(year: int, db: Session = Depends(get_db)):
+    """Get monthly revenue data for a given year (for charts)."""
+    result = []
+    for month in range(1, 13):
+        paid_data = (
+            db.query(
+                func.count(MonthlyPayment.id),
+                func.coalesce(func.sum(MonthlyPayment.amount), 0)
+            )
+            .join(User, MonthlyPayment.user_id == User.id)
+            .filter(
+                MonthlyPayment.year == year,
+                MonthlyPayment.month == month,
+                MonthlyPayment.is_paid == True,
+                User.is_active == True,
+                User.deleted_from_plex == False
+            )
+            .first()
+        )
+        unpaid_count = (
+            db.query(func.count(MonthlyPayment.id))
+            .join(User, MonthlyPayment.user_id == User.id)
+            .filter(
+                MonthlyPayment.year == year,
+                MonthlyPayment.month == month,
+                MonthlyPayment.is_paid == False,
+                User.is_active == True,
+                User.deleted_from_plex == False
+            )
+            .scalar()
+        ) or 0
+
+        result.append({
+            "month": month,
+            "total": float(paid_data[1]) if paid_data else 0,
+            "paid_count": paid_data[0] if paid_data else 0,
+            "unpaid_count": unpaid_count,
+        })
+    return result
+
+
+@router.get("/payment-summary/{year}/{month}")
+def get_payment_summary(year: int, month: int, db: Session = Depends(get_db)):
+    """Get paid vs unpaid summary for a specific month (for donut chart)."""
+    paid = (
+        db.query(func.count(MonthlyPayment.id))
+        .join(User, MonthlyPayment.user_id == User.id)
+        .filter(
+            MonthlyPayment.year == year,
+            MonthlyPayment.month == month,
+            MonthlyPayment.is_paid == True,
+            User.is_active == True,
+            User.deleted_from_plex == False
+        )
+        .scalar()
+    ) or 0
+
+    unpaid = (
+        db.query(func.count(MonthlyPayment.id))
+        .join(User, MonthlyPayment.user_id == User.id)
+        .filter(
+            MonthlyPayment.year == year,
+            MonthlyPayment.month == month,
+            MonthlyPayment.is_paid == False,
+            User.is_active == True,
+            User.deleted_from_plex == False
+        )
+        .scalar()
+    ) or 0
+
+    total_amount = (
+        db.query(func.sum(MonthlyPayment.amount))
+        .join(User, MonthlyPayment.user_id == User.id)
+        .filter(
+            MonthlyPayment.year == year,
+            MonthlyPayment.month == month,
+            MonthlyPayment.is_paid == True,
+            User.is_active == True,
+            User.deleted_from_plex == False
+        )
+        .scalar()
+    ) or 0
+
+    return {
+        "paid": paid,
+        "unpaid": unpaid,
+        "total_amount": float(total_amount),
+    }
+
+
+@router.get("/debtors")
+def get_debtors(year: int = None, db: Session = Depends(get_db)):
+    """Get users with unpaid months for a given year."""
+    if year is None:
+        year = datetime.now().year
+    current_month = datetime.now().month if year == datetime.now().year else 12
+
+    users = (
+        db.query(User)
+        .filter(User.is_active == True, User.deleted_from_plex == False)
+        .all()
+    )
+
+    debtors = []
+    for user in users:
+        unpaid = (
+            db.query(MonthlyPayment)
+            .filter(
+                MonthlyPayment.user_id == user.id,
+                MonthlyPayment.year == year,
+                MonthlyPayment.month <= current_month,
+                MonthlyPayment.is_paid == False,
+            )
+            .all()
+        )
+        if unpaid:
+            total_debt = sum(float(p.amount) for p in unpaid)
+            debtors.append({
+                "user_id": user.id,
+                "username": user.username,
+                "thumb": user.thumb,
+                "unpaid_months": len(unpaid),
+                "total_debt": total_debt,
+                "months": [p.month for p in unpaid],
+            })
+
+    debtors.sort(key=lambda d: d["total_debt"], reverse=True)
+    return debtors

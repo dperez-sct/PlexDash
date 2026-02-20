@@ -1,13 +1,17 @@
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import List, Dict
 from datetime import datetime
 from decimal import Decimal
+import csv
+import io
 
 from app.database import get_db
 from app.models.monthly_payment import MonthlyPayment
 from app.models.user import User
+from app.api.audit import log_action
 from app.schemas import (
     MonthlyPayment as MonthlyPaymentSchema,
     MonthlyPaymentUpdate,
@@ -70,7 +74,7 @@ def get_year_payments(
 
 
 @router.put("/{user_id}/{year}/{month}", response_model=MonthlyPaymentSchema)
-def update_month_payment(
+async def update_monthly_payment(
     user_id: int,
     year: int,
     month: int,
@@ -117,11 +121,30 @@ def update_month_payment(
 
     db.commit()
     db.refresh(payment)
+
+    # Audit log
+    user = db.query(User).filter(User.id == user_id).first()
+    username = user.username if user else f"user_{user_id}"
+    if payment_update.is_paid is True:
+        log_action(db, "payment_marked", "payment", payment.id, {
+            "username": username, "year": year, "month": month,
+            "amount": float(payment.amount)
+        })
+    elif payment_update.is_paid is False:
+        log_action(db, "payment_removed", "payment", payment.id, {
+            "username": username, "year": year, "month": month
+        })
+
+    # Send notification on payment received
+    if payment_update.is_paid is True:
+        from app.services.notification_service import send_payment_notification
+        await send_payment_notification(db, username, month, year, float(payment.amount))
+
     return payment
 
 
 @router.post("/{user_id}/{year}/toggle/{month}", response_model=MonthlyPaymentSchema)
-def toggle_month_paid(
+async def toggle_month_paid(
     user_id: int,
     year: int,
     month: int,
@@ -159,6 +182,14 @@ def toggle_month_paid(
 
     db.commit()
     db.refresh(payment)
+
+    # Send notification if toggled to paid
+    if payment.is_paid:
+        user = db.query(User).filter(User.id == user_id).first()
+        username = user.username if user else f"user_{user_id}"
+        from app.services.notification_service import send_payment_notification
+        await send_payment_notification(db, username, month, year, float(payment.amount))
+
     return payment
 
 
@@ -202,7 +233,107 @@ def get_user_payment_history(user_id: int, db: Session = Depends(get_db)):
             "is_active": user.is_active,
             "deleted_from_plex": user.deleted_from_plex,
             "created_at": user.created_at,
+            "notes": user.notes,
         },
         "years": list(years_data.values()),
         "total_all_time": sum(y["total_paid"] for y in years_data.values()),
     }
+
+
+@router.get("/{year}/export")
+def export_year_payments(
+    year: int,
+    include_inactive: bool = False,
+    include_deleted: bool = False,
+    db: Session = Depends(get_db),
+):
+    """Export yearly payments as CSV."""
+    query = db.query(User)
+    if not include_inactive:
+        query = query.filter(User.is_active == True)
+    if not include_deleted:
+        query = query.filter(User.deleted_from_plex == False)
+    users = query.order_by(User.username).all()
+
+    months = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(['Usuario'] + months + ['Total'])
+
+    for user in users:
+        payments = db.query(MonthlyPayment).filter(
+            MonthlyPayment.user_id == user.id,
+            MonthlyPayment.year == year
+        ).all()
+        payments_dict = {p.month: p for p in payments}
+
+        row = [user.username]
+        total = Decimal('0')
+        for m in range(1, 13):
+            p = payments_dict.get(m)
+            if p and p.is_paid:
+                row.append(float(p.amount))
+                total += p.amount
+            else:
+                row.append('')
+        row.append(float(total))
+        writer.writerow(row)
+
+    output.seek(0)
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=pagos_{year}.csv"},
+    )
+
+
+@router.post("/{year}/{month}/bulk-pay")
+def bulk_mark_paid(year: int, month: int, db: Session = Depends(get_db)):
+    """Mark all active users as paid for a specific month."""
+    payments = (
+        db.query(MonthlyPayment)
+        .join(User, MonthlyPayment.user_id == User.id)
+        .filter(
+            MonthlyPayment.year == year,
+            MonthlyPayment.month == month,
+            MonthlyPayment.is_paid == False,
+            User.is_active == True,
+            User.deleted_from_plex == False,
+        )
+        .all()
+    )
+    count = 0
+    for p in payments:
+        p.is_paid = True
+        p.paid_at = datetime.utcnow()
+        count += 1
+    db.commit()
+    log_action(db, "bulk_mark_paid", "monthly_payment", None, {"year": year, "month": month, "count": count})
+    return {"updated": count}
+
+
+@router.post("/{year}/{month}/bulk-unpay")
+def bulk_mark_unpaid(year: int, month: int, db: Session = Depends(get_db)):
+    """Mark all active users as unpaid for a specific month."""
+    payments = (
+        db.query(MonthlyPayment)
+        .join(User, MonthlyPayment.user_id == User.id)
+        .filter(
+            MonthlyPayment.year == year,
+            MonthlyPayment.month == month,
+            MonthlyPayment.is_paid == True,
+            User.is_active == True,
+            User.deleted_from_plex == False,
+        )
+        .all()
+    )
+    count = 0
+    for p in payments:
+        p.is_paid = False
+        p.paid_at = None
+        count += 1
+    db.commit()
+    log_action(db, "bulk_mark_unpaid", "monthly_payment", None, {"year": year, "month": month, "count": count})
+    return {"updated": count}
+

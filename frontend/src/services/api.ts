@@ -112,7 +112,7 @@ export const updatePayment = (id: number, data: Partial<Payment>) =>
   api.put<Payment>(`/payments/${id}`, data);
 export const markPaymentPaid = (id: number) => api.put<Payment>(`/payments/${id}/mark-paid`);
 export const deletePayment = (id: number) => api.delete(`/payments/${id}`);
-export const createQuickPayment = (userId: number) => api.post('/payments/quick', { user_id: userId });
+export const createQuickPayment = (userId: number) => api.post(`/payments/quick/${userId}`);
 
 export const removeUserAccess = (userId: number) => api.delete(`/users/${userId}/access`);
 export const reactivateUser = (userId: number) => api.post(`/users/${userId}/reactivate`);
@@ -233,6 +233,7 @@ export interface UserPaymentHistory {
     is_active: boolean;
     deleted_from_plex: boolean;
     created_at: string;
+    notes?: string;
   };
   years: YearPaymentData[];
   total_all_time: number;
@@ -251,5 +252,188 @@ export const updateMonthlyPrice = (price: number) => api.put('/settings/price', 
 
 // Invite User
 export const inviteUser = (email: string) => api.post<User>('/users/invite', { email });
+
+// ---- Dashboard Charts ----
+export interface MonthlyRevenueData {
+  month: number;
+  total: number;
+  paid_count: number;
+  unpaid_count: number;
+}
+
+export interface PaymentSummary {
+  paid: number;
+  unpaid: number;
+  total_amount: number;
+}
+
+export const getMonthlyRevenue = (year: number) =>
+  api.get<MonthlyRevenueData[]>(`/dashboard/monthly-revenue/${year}`);
+
+export const getPaymentSummary = (year: number, month: number) =>
+  api.get<PaymentSummary>(`/dashboard/payment-summary/${year}/${month}`);
+
+// ---- Audit Log ----
+export interface AuditLogEntry {
+  id: number;
+  action: string;
+  entity_type: string;
+  entity_id: number | null;
+  details: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export interface AuditLogResponse {
+  total: number;
+  page: number;
+  limit: number;
+  logs: AuditLogEntry[];
+}
+
+export const getAuditLogs = (page: number = 1, limit: number = 50) =>
+  api.get<AuditLogResponse>('/audit/logs', { params: { page, limit } });
+
+// ---- CSV Export ----
+export const exportYearPayments = async (year: number) => {
+  const response = await api.get(`/monthly-payments/${year}/export`, {
+    responseType: 'blob',
+  });
+  const url = window.URL.createObjectURL(new Blob([response.data]));
+  const link = document.createElement('a');
+  link.href = url;
+  link.setAttribute('download', `pagos_${year}.csv`);
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+};
+
+// ---- Notification Settings ----
+export interface NotificationSettingsResponse {
+  telegram_configured: boolean;
+  telegram_chat_id: string | null;
+  discord_configured: boolean;
+}
+
+export const getNotificationSettings = () =>
+  api.get<NotificationSettingsResponse>('/settings/notifications');
+
+export const updateNotificationSettings = (data: {
+  telegram_bot_token?: string;
+  telegram_chat_id?: string;
+  discord_webhook_url?: string;
+}) => api.put('/settings/notifications', data);
+
+export const testNotification = () => api.post('/settings/notifications/test');
+
+export const sendReminders = () => api.post('/settings/notifications/send-reminders');
+
+// ---- Bulk Payment Actions ----
+export const bulkMarkPaid = (year: number, month: number) =>
+  api.post(`/monthly-payments/${year}/${month}/bulk-pay`);
+
+export const bulkMarkUnpaid = (year: number, month: number) =>
+  api.post(`/monthly-payments/${year}/${month}/bulk-unpay`);
+
+// ---- Debtors ----
+export interface Debtor {
+  user_id: number;
+  username: string;
+  thumb: string | null;
+  unpaid_months: number;
+  total_debt: number;
+  months: number[];
+}
+
+export const getDebtors = (year?: number) =>
+  api.get<Debtor[]>('/dashboard/debtors', { params: year ? { year } : {} });
+
+// ---- Plex Server Info ----
+export interface PlexServerInfo {
+  name: string;
+  version: string;
+  platform: string;
+}
+
+export const getPlexServerInfo = () => api.get<PlexServerInfo>('/dashboard/plex-info');
+
+// ---- Backup & Restore ----
+export const downloadBackup = async () => {
+  const response = await api.get('/settings/backup', { responseType: 'blob' });
+  const url = window.URL.createObjectURL(new Blob([response.data]));
+  const link = document.createElement('a');
+  link.href = url;
+  link.setAttribute('download', 'plexdash_backup.json');
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+};
+
+export const restoreBackup = (data: Record<string, unknown>) =>
+  api.post('/settings/restore', data);
+
+// ---- Expenses ----
+export interface Expense {
+  id: number;
+  name: string;
+  category: string;
+  amount: number;
+  is_recurring: boolean;
+  recurrence: string;
+  date: string;
+  notes: string | null;
+  created_at: string | null;
+}
+
+export interface ExpenseCreate {
+  name: string;
+  category: string;
+  amount: number;
+  is_recurring: boolean;
+  recurrence: string;
+  date: string;
+  notes?: string;
+}
+
+export interface ExpenseSummary {
+  total_expenses: number;
+  total_income: number;
+  net_profit: number;
+  monthly_avg_expense: number;
+  by_category: Record<string, number>;
+}
+
+export const getExpenses = (category?: string, year?: number) => {
+  const params: Record<string, string> = {};
+  if (category) params.category = category;
+  if (year) params.year = String(year);
+  return api.get<Expense[]>('/expenses', { params });
+};
+
+export const createExpense = (data: ExpenseCreate) =>
+  api.post<Expense>('/expenses', data);
+
+export const updateExpense = (id: number, data: Partial<ExpenseCreate>) =>
+  api.put<Expense>(`/expenses/${id}`, data);
+
+export const deleteExpense = (id: number) =>
+  api.delete(`/expenses/${id}`);
+
+export const getExpenseSummary = (year: number) =>
+  api.get<ExpenseSummary>(`/expenses/summary/${year}`);
+
+// ---- Notification Preferences ----
+export interface NotificationPreferences {
+  notify_on_payment: boolean;
+  notify_on_expense: boolean;
+  notify_monthly_summary: boolean;
+}
+
+export const getNotificationPreferences = () =>
+  api.get<NotificationPreferences>('/settings/notification-preferences');
+
+export const updateNotificationPreferences = (data: Partial<NotificationPreferences>) =>
+  api.put('/settings/notification-preferences', data);
 
 export default api;
