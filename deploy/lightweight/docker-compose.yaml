@@ -12,8 +12,8 @@ services:
       - "8000:8000"
     environment:
       - DATABASE_URL=sqlite:////app/data/plexdash.db
-      - PLEX_URL=${PLEX_URL:-http://192.168.3.10:32400}
-      - PLEX_TOKEN=${PLEX_TOKEN:-ZSy28TASRTttZBhERYJs}
+      - PLEX_URL=${PLEX_URL:-http://host.docker.internal:32400}
+      - PLEX_TOKEN=${PLEX_TOKEN:-your_plex_token_here}
       # Generate a secure random string for production
       - SECRET_KEY=${SECRET_KEY:-changeme_in_production_please}
     volumes:

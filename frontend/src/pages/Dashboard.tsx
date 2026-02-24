@@ -4,6 +4,7 @@ import {
   CurrencyEuroIcon,
   ExclamationCircleIcon,
   UserGroupIcon,
+  ArrowTrendingDownIcon,
 } from '@heroicons/react/24/outline';
 import { Link } from 'react-router-dom';
 import {
@@ -13,8 +14,9 @@ import {
 import {
   getDashboardStats, getRecentPayments, getCurrencySettings,
   getMonthlyRevenue, getPaymentSummary, getDebtors, getPlexServerInfo,
+  getExpenseSummary,
   DashboardStats, RecentPayment, MonthlyRevenueData, PaymentSummary,
-  Debtor, PlexServerInfo,
+  Debtor, PlexServerInfo, ExpenseSummary,
 } from '../services/api';
 
 const MONTH_NAMES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
@@ -30,6 +32,7 @@ export default function Dashboard() {
   const [paymentSummary, setPaymentSummary] = useState<PaymentSummary | null>(null);
   const [debtors, setDebtors] = useState<Debtor[]>([]);
   const [plexInfo, setPlexInfo] = useState<PlexServerInfo | null>(null);
+  const [expenseSummary, setExpenseSummary] = useState<ExpenseSummary | null>(null);
 
   const currentYear = new Date().getFullYear();
   const currentMonth = new Date().getMonth() + 1;
@@ -51,8 +54,9 @@ export default function Dashboard() {
         setRevenueData(revenueRes.data);
         setPaymentSummary(summaryRes.data);
         setDebtors(debtorsRes.data);
-        // Plex info is optional - don't fail if unavailable
+        // Plex info & expenses are optional - don't fail if unavailable
         try { const pi = await getPlexServerInfo(); setPlexInfo(pi.data); } catch { }
+        try { const es = await getExpenseSummary(0); setExpenseSummary(es.data); } catch { }
       } catch (error) {
         console.error('Error fetching dashboard data:', error);
         setError('Error al cargar datos del panel. Por favor, recargue la página.');
@@ -150,6 +154,39 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+
+      {/* Expenses Summary Row */}
+      {expenseSummary && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+          <div className="bg-plex-dark p-6 rounded-lg">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-gray-400 text-sm">Gastos Acumulados</p>
+                <p className="text-2xl font-bold text-red-400 mt-1">
+                  {currencySymbol}{Number(expenseSummary.total_expenses).toFixed(2)}
+                </p>
+              </div>
+              <div className="bg-red-500/20 p-3 rounded-lg">
+                <ArrowTrendingDownIcon className="h-6 w-6 text-red-400" />
+              </div>
+            </div>
+          </div>
+          <div className="bg-plex-dark p-6 rounded-lg">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-gray-400 text-sm">Ingresos Acumulados</p>
+                <p className="text-2xl font-bold text-green-400 mt-1">
+                  {currencySymbol}{Number(expenseSummary.total_income).toFixed(2)}
+                </p>
+              </div>
+              <div className="bg-green-500/20 p-3 rounded-lg">
+                <CurrencyEuroIcon className="h-6 w-6 text-green-400" />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
 
       {/* Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">

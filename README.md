@@ -7,13 +7,20 @@ Payment management system for Plex servers.
 - **User Management**: Sync and manage users from your Plex server
 - **Library Sharing Toggle**: Revoke and restore Plex library access per user
 - **User Invitations**: Invite new users directly from the dashboard
+- **User Profiles**: Detailed user view with payment history, Tautulli stats, and warnings
 - **Payment Tracking**: Monthly payment grid with per-user tracking
 - **Quick Payments**: Bulk payment recording with multi-month selection
 - **Payment History**: Complete payment history per user
+- **Expenses Management**: Track platform expenses with category breakdown and year filtering
+- **Dashboard**: Overview of revenue, users, payment status, and accumulated expenses
+- **Tautulli Integration**: Kill-stream for unpaid users with configurable warning messages
+- **Telegram Notifications**: Configurable notifications for payments, expenses, and warnings
+- **Audit Log**: Full audit trail of all actions
+- **Backup & Restore**: Export/import all data as JSON
 - **User Search**: Filter users by username, email, or notes
-- **Dashboard**: Overview of revenue, users, and payment status
 - **Authentication**: JWT-based authentication with configurable credentials
 - **Currency & Price Settings**: Configurable currency symbol and monthly price
+- **Help Page**: Built-in documentation for all features
 - **Multi-language**: Spanish UI
 
 ## Tech Stack
@@ -188,6 +195,28 @@ kubectl apply -f k8s/base/migration-job.yaml
 - `PUT /api/settings/currency` - Update currency symbol
 - `GET /api/settings/price` - Get monthly price
 - `PUT /api/settings/price` - Update monthly price
+- `GET /api/settings/backup` - Export all data as JSON
+- `POST /api/settings/restore` - Import data from JSON backup
+
+### Expenses
+- `GET /api/expenses` - List expenses (filterable by category/year)
+- `POST /api/expenses` - Create expense
+- `PUT /api/expenses/{id}` - Update expense
+- `DELETE /api/expenses/{id}` - Delete expense
+- `GET /api/expenses/summary/{year}` - Expense summary (year=0 for all-time)
+
+### Tautulli
+- `GET /api/tautulli/settings` - Get Tautulli settings
+- `PUT /api/tautulli/settings` - Update Tautulli settings
+- `GET /api/tautulli/check/{username}` - Public endpoint for kill-stream checks
+
+### Audit
+- `GET /api/audit` - Get audit log entries
+
+### Notifications
+- `GET /api/settings/notifications` - Get notification preferences
+- `PUT /api/settings/notifications` - Update notification preferences
+- `POST /api/settings/notifications/test` - Send test notification
 
 ## Project Structure
 

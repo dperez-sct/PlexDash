@@ -232,6 +232,9 @@ export interface UserPaymentHistory {
     thumb: string | null;
     is_active: boolean;
     deleted_from_plex: boolean;
+    kill_stream_enabled: boolean;
+    warn_count: number;
+    last_warned_at: string | null;
     created_at: string;
     notes?: string;
   };
@@ -408,11 +411,11 @@ export const getExpenses = (category?: string, year?: number) => {
   const params: Record<string, string> = {};
   if (category) params.category = category;
   if (year) params.year = String(year);
-  return api.get<Expense[]>('/expenses', { params });
+  return api.get<Expense[]>('/expenses/', { params });
 };
 
 export const createExpense = (data: ExpenseCreate) =>
-  api.post<Expense>('/expenses', data);
+  api.post<Expense>('/expenses/', data);
 
 export const updateExpense = (id: number, data: Partial<ExpenseCreate>) =>
   api.put<Expense>(`/expenses/${id}`, data);

@@ -7,7 +7,7 @@ COPY frontend/ ./
 RUN npm run build
 
 # Build Backend & Runtime
-FROM python:3.11-slim
+FROM python:3.12-slim
 WORKDIR /app
 
 # Install system dependencies (needed for some python packages)
@@ -19,7 +19,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Install python dependencies
 COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-RUN pip install --no-cache-dir tenacity
 
 # Copy compiled frontend
 COPY --from=frontend-build /app/frontend/dist /app/static

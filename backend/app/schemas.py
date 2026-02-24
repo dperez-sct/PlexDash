@@ -18,6 +18,7 @@ class UserCreate(UserBase):
 
 class UserUpdate(BaseModel):
     notes: Optional[str] = None
+    kill_stream_enabled: Optional[bool] = None
 
 
 class User(UserBase):
@@ -25,6 +26,7 @@ class User(UserBase):
     plex_id: str
     is_active: bool
     deleted_from_plex: bool = False
+    kill_stream_enabled: bool = False
     created_at: datetime
 
     class Config:

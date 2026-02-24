@@ -29,6 +29,7 @@ export default function Login() {
     <div className="min-h-screen bg-plex-darker flex items-center justify-center px-4">
       <div className="max-w-md w-full">
         <div className="text-center mb-8">
+          <img src="/logo.png" alt="PlexDash" className="h-16 w-16 mx-auto mb-4 rounded-xl" />
           <h1 className="text-4xl font-bold text-plex-yellow mb-2">PlexDash</h1>
           <p className="text-gray-400">Sistema de gestión de pagos</p>
         </div>

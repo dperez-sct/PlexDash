@@ -9,6 +9,10 @@ import {
     ArrowTrendingDownIcon,
     ArrowTrendingUpIcon,
     CalculatorIcon,
+    ExclamationTriangleIcon,
+    DocumentTextIcon,
+    CalendarIcon,
+    ArrowPathIcon,
 } from '@heroicons/react/24/outline';
 import {
     getExpenses,
@@ -46,7 +50,7 @@ export default function Expenses() {
     const [loading, setLoading] = useState(true);
     const [currencySymbol, setCurrencySymbol] = useState('€');
     const [filterCategory, setFilterCategory] = useState<string>('');
-    const [selectedYear, setSelectedYear] = useState(currentYear);
+    const [selectedYear, setSelectedYear] = useState(0);
 
     // Modal state
     const [showModal, setShowModal] = useState(false);
@@ -61,28 +65,36 @@ export default function Expenses() {
         notes: '',
     });
 
+    // Delete confirmation modal state
+    const [showDeleteModal, setShowDeleteModal] = useState(false);
+    const [expenseToDelete, setExpenseToDelete] = useState<Expense | null>(null);
+    const [deleting, setDeleting] = useState(false);
+
     const fetchData = async () => {
+        setLoading(true);
         try {
-            const [expRes, sumRes, curRes] = await Promise.all([
-                getExpenses(filterCategory || undefined, selectedYear),
-                getExpenseSummary(selectedYear),
-                getCurrencySettings(),
-            ]);
+            const yearParam = selectedYear > 0 ? selectedYear : undefined;
 
-            if (Array.isArray(expRes.data)) {
-                setExpenses(expRes.data);
-            } else {
-                console.error('Expected array for expenses but got:', expRes.data);
-                setExpenses([]);
-            }
+            getExpenses(filterCategory || undefined, yearParam)
+                .then((res: any) => {
+                    if (Array.isArray(res.data)) setExpenses(res.data);
+                    else setExpenses([]);
+                })
+                .catch((err: any) => {
+                    console.error('Error fetching expenses:', err);
+                    setExpenses([]);
+                });
 
-            setSummary(sumRes.data);
-            setCurrencySymbol(curRes.data.currency_symbol);
-        } catch (error) {
-            console.error('Error fetching expenses:', error);
-            setExpenses([]); // Ensure it's an array on error
+            getExpenseSummary(selectedYear)
+                .then((res: any) => setSummary(res.data))
+                .catch((err: any) => console.error('Error fetching summary:', err));
+
+            getCurrencySettings()
+                .then((res: any) => setCurrencySymbol(res.data.currency_symbol))
+                .catch((err: any) => console.error('Error fetching currency:', err));
+
         } finally {
-            setLoading(false);
+            setTimeout(() => setLoading(false), 300);
         }
     };
 
@@ -137,13 +149,23 @@ export default function Expenses() {
         }
     };
 
-    const handleDelete = async (id: number) => {
-        if (!confirm('¿Estás seguro de eliminar este gasto?')) return;
+    const confirmDelete = (expense: Expense) => {
+        setExpenseToDelete(expense);
+        setShowDeleteModal(true);
+    };
+
+    const handleDelete = async () => {
+        if (!expenseToDelete) return;
+        setDeleting(true);
         try {
-            await deleteExpense(id);
+            await deleteExpense(expenseToDelete.id);
+            setShowDeleteModal(false);
+            setExpenseToDelete(null);
             fetchData();
         } catch (error) {
             console.error('Error deleting expense:', error);
+        } finally {
+            setDeleting(false);
         }
     };
 
@@ -174,7 +196,7 @@ export default function Expenses() {
                     <div className="bg-plex-dark rounded-lg p-5">
                         <div className="flex items-center justify-between">
                             <div>
-                                <p className="text-gray-400 text-sm">Total Gastos ({selectedYear})</p>
+                                <p className="text-gray-400 text-sm">Total Gastos {selectedYear > 0 ? `(${selectedYear})` : '(Todos)'}</p>
                                 <p className="text-2xl font-bold text-red-400 mt-1">
                                     {currencySymbol}{Number(summary.total_expenses).toFixed(2)}
                                 </p>
@@ -185,7 +207,7 @@ export default function Expenses() {
                     <div className="bg-plex-dark rounded-lg p-5">
                         <div className="flex items-center justify-between">
                             <div>
-                                <p className="text-gray-400 text-sm">Total Ingresos ({selectedYear})</p>
+                                <p className="text-gray-400 text-sm">Total Ingresos {selectedYear > 0 ? `(${selectedYear})` : '(Todos)'}</p>
                                 <p className="text-2xl font-bold text-green-400 mt-1">
                                     {currencySymbol}{Number(summary.total_income).toFixed(2)}
                                 </p>
@@ -258,88 +280,150 @@ export default function Expenses() {
                         onChange={(e) => setSelectedYear(Number(e.target.value))}
                         className="bg-plex-dark text-white border border-gray-700 rounded-lg px-3 py-2 focus:border-plex-yellow focus:outline-none"
                     >
-                        {[currentYear, currentYear - 1, currentYear - 2].map((y) => (
+                        <option value={0}>Todos los años</option>
+                        {[currentYear, currentYear - 1, currentYear - 2, currentYear - 3, currentYear - 4].map((y) => (
                             <option key={y} value={y}>{y}</option>
                         ))}
                     </select>
                 </div>
+                <div className="ml-auto text-gray-400 text-sm flex items-center">
+                    {Array.isArray(expenses) ? expenses.length : 0} gasto{expenses.length !== 1 ? 's' : ''}
+                </div>
             </div>
 
-            {/* Expenses Table */}
-            <div className="bg-plex-dark rounded-lg overflow-hidden overflow-x-auto">
-                <table className="w-full text-left min-w-[700px]">
-                    <thead className="bg-plex-darker text-gray-400 uppercase text-xs">
-                        <tr>
-                            <th className="px-6 py-4">Nombre</th>
-                            <th className="px-6 py-4">Categoría</th>
-                            <th className="px-6 py-4">Importe</th>
-                            <th className="px-6 py-4">Recurrencia</th>
-                            <th className="px-6 py-4">Fecha</th>
-                            <th className="px-6 py-4 text-right">Acciones</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-700">
-                        {Array.isArray(expenses) && expenses.length === 0 ? (
-                            <tr>
-                                <td colSpan={6} className="px-6 py-8 text-center text-gray-500">
-                                    No hay gastos registrados para este período
-                                </td>
-                            </tr>
-                        ) : (
-                            Array.isArray(expenses) && expenses.map((expense) => {
-                                const catInfo = CATEGORIES[expense.category] || CATEGORIES.other;
-                                return (
-                                    <tr key={expense.id} className="hover:bg-plex-darker/50 transition-colors">
-                                        <td className="px-6 py-4">
+            {/* Expense List - Detailed Cards */}
+            {Array.isArray(expenses) && expenses.length === 0 ? (
+                <div className="bg-plex-dark rounded-lg p-12 text-center text-gray-500">
+                    <CurrencyEuroIcon className="h-12 w-12 mx-auto mb-3 opacity-30" />
+                    <p className="text-lg">No hay gastos registrados para este período</p>
+                    <p className="text-sm mt-1">Haz clic en "Nuevo Gasto" para añadir uno</p>
+                </div>
+            ) : (
+                <div className="bg-plex-dark rounded-lg overflow-hidden">
+                    {/* Table Header */}
+                    <div className="hidden md:grid grid-cols-[2fr_1fr_1fr_1fr_1fr_auto] gap-4 px-6 py-3 bg-plex-darker text-gray-400 uppercase text-xs font-semibold tracking-wider">
+                        <div>Gasto</div>
+                        <div>Categoría</div>
+                        <div>Importe</div>
+                        <div>Recurrencia</div>
+                        <div>Fecha</div>
+                        <div className="text-right">Acciones</div>
+                    </div>
+
+                    {/* Expense Rows */}
+                    <div className="divide-y divide-gray-800">
+                        {Array.isArray(expenses) && expenses.map((expense) => {
+                            const catInfo = CATEGORIES[expense.category] || CATEGORIES.other;
+                            return (
+                                <div
+                                    key={expense.id}
+                                    className="px-6 py-4 hover:bg-plex-darker/40 transition-colors"
+                                >
+                                    {/* Mobile layout */}
+                                    <div className="md:hidden space-y-3">
+                                        <div className="flex items-start justify-between">
                                             <div>
-                                                <div className="text-white font-medium">{expense.name}</div>
-                                                {expense.notes && (
-                                                    <div className="text-gray-500 text-sm truncate max-w-[200px]">{expense.notes}</div>
-                                                )}
+                                                <div className="text-white font-semibold text-base">{expense.name}</div>
+                                                <span className={`inline-flex items-center mt-1 px-2.5 py-0.5 rounded-full text-xs font-medium border ${catInfo.color}`}>
+                                                    {catInfo.emoji} {catInfo.label}
+                                                </span>
                                             </div>
-                                        </td>
-                                        <td className="px-6 py-4">
+                                            <div className="text-right">
+                                                <div className="text-white font-bold text-lg">{currencySymbol}{Number(expense.amount).toFixed(2)}</div>
+                                                <div className="text-gray-400 text-xs mt-0.5">
+                                                    {RECURRENCES[expense.recurrence] || expense.recurrence}
+                                                    {expense.is_recurring && <span className="ml-1">🔄</span>}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center justify-between text-sm text-gray-400">
+                                            <div className="flex items-center gap-1">
+                                                <CalendarIcon className="h-4 w-4" />
+                                                {new Date(expense.date).toLocaleDateString('es-ES')}
+                                            </div>
+                                            {expense.notes && (
+                                                <div className="flex items-center gap-1 text-gray-500 truncate max-w-[180px]">
+                                                    <DocumentTextIcon className="h-4 w-4 flex-shrink-0" />
+                                                    <span className="truncate">{expense.notes}</span>
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="flex items-center justify-end gap-3 pt-1">
+                                            <button
+                                                onClick={() => openEdit(expense)}
+                                                className="flex items-center gap-1 text-plex-yellow hover:text-plex-orange text-sm"
+                                                title="Editar"
+                                            >
+                                                <PencilIcon className="h-4 w-4" />
+                                                Editar
+                                            </button>
+                                            <button
+                                                onClick={() => confirmDelete(expense)}
+                                                className="flex items-center gap-1 text-red-400 hover:text-red-300 text-sm"
+                                                title="Eliminar"
+                                            >
+                                                <TrashIcon className="h-4 w-4" />
+                                                Eliminar
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* Desktop layout */}
+                                    <div className="hidden md:grid grid-cols-[2fr_1fr_1fr_1fr_1fr_auto] gap-4 items-center">
+                                        <div>
+                                            <div className="text-white font-medium">{expense.name}</div>
+                                            {expense.notes && (
+                                                <div className="flex items-center gap-1 text-gray-500 text-sm mt-0.5">
+                                                    <DocumentTextIcon className="h-3.5 w-3.5 flex-shrink-0" />
+                                                    <span className="truncate max-w-[220px]">{expense.notes}</span>
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div>
                                             <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${catInfo.color}`}>
                                                 {catInfo.emoji} {catInfo.label}
                                             </span>
-                                        </td>
-                                        <td className="px-6 py-4 text-white font-medium">
+                                        </div>
+                                        <div className="text-white font-semibold">
                                             {currencySymbol}{Number(expense.amount).toFixed(2)}
-                                        </td>
-                                        <td className="px-6 py-4 text-gray-300">
-                                            {RECURRENCES[expense.recurrence] || expense.recurrence}
-                                            {expense.is_recurring && (
-                                                <span className="ml-2 text-xs text-plex-yellow">🔄</span>
+                                        </div>
+                                        <div className="text-gray-300 text-sm">
+                                            {expense.is_recurring ? (
+                                                <span className="flex items-center gap-1">
+                                                    <ArrowPathIcon className="h-3.5 w-3.5 text-plex-yellow" />
+                                                    {RECURRENCES[expense.recurrence] || expense.recurrence}
+                                                </span>
+                                            ) : (
+                                                RECURRENCES[expense.recurrence] || expense.recurrence
                                             )}
-                                        </td>
-                                        <td className="px-6 py-4 text-gray-300">
+                                        </div>
+                                        <div className="flex items-center gap-1 text-gray-300 text-sm">
+                                            <CalendarIcon className="h-4 w-4 text-gray-500" />
                                             {new Date(expense.date).toLocaleDateString('es-ES')}
-                                        </td>
-                                        <td className="px-6 py-4 text-right">
-                                            <div className="flex items-center justify-end space-x-3">
-                                                <button
-                                                    onClick={() => openEdit(expense)}
-                                                    className="text-plex-yellow hover:text-plex-orange"
-                                                    title="Editar"
-                                                >
-                                                    <PencilIcon className="h-5 w-5" />
-                                                </button>
-                                                <button
-                                                    onClick={() => handleDelete(expense.id)}
-                                                    className="text-red-400 hover:text-red-300"
-                                                    title="Eliminar"
-                                                >
-                                                    <TrashIcon className="h-5 w-5" />
-                                                </button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                );
-                            })
-                        )}
-                    </tbody>
-                </table>
-            </div>
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            <button
+                                                onClick={() => openEdit(expense)}
+                                                className="text-plex-yellow hover:text-plex-orange transition-colors"
+                                                title="Editar"
+                                            >
+                                                <PencilIcon className="h-5 w-5" />
+                                            </button>
+                                            <button
+                                                onClick={() => confirmDelete(expense)}
+                                                className="text-red-400 hover:text-red-300 transition-colors"
+                                                title="Eliminar"
+                                            >
+                                                <TrashIcon className="h-5 w-5" />
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
 
             {/* Add/Edit Modal */}
             {showModal && (
@@ -450,6 +534,81 @@ export default function Expenses() {
                                 </button>
                             </div>
                         </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Delete Confirmation Modal */}
+            {showDeleteModal && expenseToDelete && (
+                <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50">
+                    <div className="bg-plex-dark rounded-lg p-6 max-w-md w-full">
+                        <div className="flex items-center gap-3 mb-4">
+                            <div className="flex-shrink-0 w-10 h-10 rounded-full bg-red-500/20 flex items-center justify-center">
+                                <ExclamationTriangleIcon className="h-6 w-6 text-red-400" />
+                            </div>
+                            <h3 className="text-xl font-bold text-white">Eliminar Gasto</h3>
+                        </div>
+
+                        <p className="text-gray-300 mb-2">
+                            ¿Estás seguro de que quieres eliminar este gasto?
+                        </p>
+
+                        {/* Expense details */}
+                        <div className="bg-plex-darker rounded-lg p-4 mb-6 border border-gray-700">
+                            <div className="flex items-start justify-between">
+                                <div>
+                                    <p className="text-white font-semibold">{expenseToDelete.name}</p>
+                                    <p className="text-gray-400 text-sm mt-1">
+                                        {CATEGORIES[expenseToDelete.category]?.emoji} {CATEGORIES[expenseToDelete.category]?.label || expenseToDelete.category}
+                                        {' · '}
+                                        {new Date(expenseToDelete.date).toLocaleDateString('es-ES')}
+                                    </p>
+                                    {expenseToDelete.notes && (
+                                        <p className="text-gray-500 text-sm mt-1 italic">{expenseToDelete.notes}</p>
+                                    )}
+                                </div>
+                                <span className="text-red-400 font-bold text-lg">
+                                    {currencySymbol}{Number(expenseToDelete.amount).toFixed(2)}
+                                </span>
+                            </div>
+                        </div>
+
+                        <p className="text-gray-500 text-sm mb-5">Esta acción no se puede deshacer.</p>
+
+                        <div className="flex justify-end gap-3">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setShowDeleteModal(false);
+                                    setExpenseToDelete(null);
+                                }}
+                                className="px-4 py-2 text-gray-400 hover:text-white transition-colors"
+                                disabled={deleting}
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleDelete}
+                                disabled={deleting}
+                                className="px-6 py-2 bg-red-500 hover:bg-red-400 text-white font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                            >
+                                {deleting ? (
+                                    <>
+                                        <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                                        </svg>
+                                        Eliminando...
+                                    </>
+                                ) : (
+                                    <>
+                                        <TrashIcon className="h-4 w-4" />
+                                        Eliminar
+                                    </>
+                                )}
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

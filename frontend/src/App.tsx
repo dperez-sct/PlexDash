@@ -11,6 +11,7 @@ import Settings from './pages/Settings';
 import AuditLog from './pages/AuditLog';
 import UserDetail from './pages/UserDetail';
 import Expenses from './pages/Expenses';
+import Help from './pages/Help';
 
 function App() {
   return (
@@ -31,6 +32,7 @@ function App() {
                     <Route path="/expenses" element={<Expenses />} />
                     <Route path="/activity" element={<AuditLog />} />
                     <Route path="/settings" element={<Settings />} />
+                    <Route path="/help" element={<Help />} />
                   </Routes>
                 </Layout>
               </ProtectedRoute>

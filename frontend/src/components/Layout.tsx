@@ -10,6 +10,7 @@ import {
   XMarkIcon,
   ClipboardDocumentListIcon,
   BanknotesIcon,
+  QuestionMarkCircleIcon,
 } from '@heroicons/react/24/outline';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -24,6 +25,7 @@ const navigation = [
   { name: 'Gastos', href: '/expenses', icon: BanknotesIcon },
   { name: 'Actividad', href: '/activity', icon: ClipboardDocumentListIcon },
   { name: 'Ajustes', href: '/settings', icon: Cog6ToothIcon },
+  { name: 'Ayuda', href: '/help', icon: QuestionMarkCircleIcon },
 ];
 
 export default function Layout({ children }: LayoutProps) {
@@ -53,7 +55,8 @@ export default function Layout({ children }: LayoutProps) {
         >
           <Bars3Icon className="h-6 w-6" />
         </button>
-        <h1 className="text-xl font-bold text-plex-yellow ml-3">PlexDash</h1>
+        <img src="/logo.png" alt="PlexDash" className="h-8 w-8 rounded-lg" />
+        <h1 className="text-xl font-bold text-plex-yellow ml-2">PlexDash</h1>
       </div>
 
       {/* Mobile overlay */}
@@ -70,7 +73,10 @@ export default function Layout({ children }: LayoutProps) {
           } md:translate-x-0`}
       >
         <div className="flex h-16 items-center justify-between px-6">
-          <h1 className="text-2xl font-bold text-plex-yellow">PlexDash</h1>
+          <div className="flex items-center gap-3">
+            <img src="/logo.png" alt="PlexDash" className="h-9 w-9 rounded-lg" />
+            <h1 className="text-2xl font-bold text-plex-yellow">PlexDash</h1>
+          </div>
           {/* Close button - mobile only */}
           <button
             onClick={() => setSidebarOpen(false)}

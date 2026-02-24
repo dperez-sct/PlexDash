@@ -37,6 +37,13 @@ export default function UserDetail() {
     const [processingPayment, setProcessingPayment] = useState(false);
     const [editingNote, setEditingNote] = useState(false);
     const [noteContent, setNoteContent] = useState('');
+    const [activity, setActivity] = useState<{
+        total_plays: number; total_duration: number;
+        last_seen: number | null; last_played: string;
+        plays_today?: number; plays_7d?: number; plays_30d?: number;
+        duration_today?: number; duration_7d?: number; duration_30d?: number;
+        recent_history?: Array<{ title: string; media_type: string; date: number; duration: number; percent_complete: number }>;
+    } | null>(null);
 
     const loadData = async () => {
         if (!id) return;
@@ -51,6 +58,17 @@ export default function UserDetail() {
             setNoteContent(histRes.data.user.notes || '');
             setCurrency(currRes.data.currency_symbol);
             setMonthlyPrice(priceRes.data.monthly_price);
+
+            // Fetch Tautulli activity (optional, non-blocking)
+            try {
+                const actRes = await fetch(`/api/tautulli/user/${id}/activity`);
+                if (actRes.ok) {
+                    const actData = await actRes.json();
+                    if (actData.configured && actData.stats) {
+                        setActivity(actData.stats);
+                    }
+                }
+            } catch { /* Tautulli not configured or unavailable */ }
         } catch (err) {
             console.error('Error loading user detail', err);
         } finally {
@@ -185,10 +203,9 @@ export default function UserDetail() {
     // Calculate stats
     const totalMonths = years.reduce((acc, y) => acc + Object.keys(y.payments).length, 0);
     const paidMonths = years.reduce(
-        (acc, y) => acc + Object.values(y.payments).filter((p: any) => p.is_paid).length,
+        (acc: number, y: any) => acc + Object.values(y.payments).filter((p: any) => p.is_paid).length,
         0
     );
-    const paymentRate = totalMonths > 0 ? Math.round((paidMonths / totalMonths) * 100) : 0;
 
     return (
         <div className="space-y-6 pb-12">
@@ -253,6 +270,18 @@ export default function UserDetail() {
                                 Pago Rápido ({currency}{monthlyPrice})
                             </button>
 
+                            {/* Active toggle — always visible */}
+                            <button
+                                onClick={handleToggleActive}
+                                className={`w-full flex items-center justify-center px-4 py-2 rounded-lg transition-colors border ${user.is_active
+                                    ? 'bg-gray-700/50 text-gray-300 hover:bg-gray-600 border-gray-600'
+                                    : 'bg-plex-yellow/20 text-plex-yellow hover:bg-plex-yellow/30 border-plex-yellow/30'
+                                    }`}
+                            >
+                                {user.is_active ? 'Desactivar Usuario' : 'Activar Usuario'}
+                            </button>
+
+                            {/* Plex access actions */}
                             {user.deleted_from_plex ? (
                                 <button
                                     onClick={handleReactivateUser}
@@ -261,23 +290,85 @@ export default function UserDetail() {
                                     Reactivar en Plex
                                 </button>
                             ) : (
-                                <div className="flex space-x-2">
-                                    <button
-                                        onClick={handleToggleActive}
-                                        className={`flex-1 flex items-center justify-center px-4 py-2 rounded-lg transition-colors border ${user.is_active
-                                            ? 'bg-gray-700/50 text-gray-300 hover:bg-gray-600 border-gray-600'
-                                            : 'bg-plex-yellow/20 text-plex-yellow hover:bg-plex-yellow/30 border-plex-yellow/30'
+                                <button
+                                    onClick={handleRemoveAccess}
+                                    className="flex items-center justify-center px-4 py-2 bg-red-900/40 text-red-400 hover:bg-red-900/60 border border-red-900/50 rounded-lg transition-colors"
+                                    title="Quitar acceso a Plex"
+                                >
+                                    <UserMinusIcon className="h-5 w-5 mr-2" />
+                                    Quitar Acceso
+                                </button>
+                            )}
+
+                            {/* Kill Stream Toggle */}
+                            <div className="mt-1 pt-3 border-t border-gray-700 flex items-center justify-between">
+                                <div>
+                                    <p className="text-white text-sm font-medium">Aviso de pago</p>
+                                    <p className="text-gray-500 text-xs">Aviso al reproducir si debe</p>
+                                </div>
+                                <button
+                                    onClick={async () => {
+                                        const newVal = !user.kill_stream_enabled;
+                                        try {
+                                            const res = await fetch(`/api/users/${user.id}`, {
+                                                method: 'PUT',
+                                                headers: { 'Content-Type': 'application/json' },
+                                                credentials: 'include',
+                                                body: JSON.stringify({ kill_stream_enabled: newVal }),
+                                            });
+                                            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                                            setHistory({
+                                                ...history,
+                                                user: { ...user, kill_stream_enabled: newVal }
+                                            });
+                                        } catch (e) {
+                                            console.error('Error updating kill_stream_enabled:', e);
+                                            alert('Error al guardar el cambio. Revisa la consola.');
+                                        }
+                                    }}
+                                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${user.kill_stream_enabled ? 'bg-plex-yellow' : 'bg-gray-600'
+                                        }`}
+                                >
+                                    <span
+                                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${user.kill_stream_enabled ? 'translate-x-6' : 'translate-x-1'
                                             }`}
-                                    >
-                                        {user.is_active ? 'Desactivar' : 'Activar'}
-                                    </button>
+                                    />
+                                </button>
+                            </div>
+
+                            {/* Warning Counter */}
+                            {user.kill_stream_enabled && (user.warn_count > 0 || user.last_warned_at) && (
+                                <div className="mt-2 flex items-center justify-between bg-amber-900/20 border border-amber-700/30 rounded-lg px-3 py-2">
+                                    <div className="flex items-center space-x-2">
+                                        <span className="text-amber-400 text-sm font-medium">
+                                            {user.warn_count || 0} aviso{(user.warn_count || 0) !== 1 ? 's' : ''}
+                                        </span>
+                                        {user.last_warned_at && (
+                                            <span className="text-gray-500 text-xs">
+                                                (ultimo: {new Date(user.last_warned_at).toLocaleDateString('es-ES')})
+                                            </span>
+                                        )}
+                                    </div>
                                     <button
-                                        onClick={handleRemoveAccess}
-                                        className="flex-1 flex items-center justify-center px-4 py-2 bg-red-900/40 text-red-400 hover:bg-red-900/60 border border-red-900/50 rounded-lg transition-colors"
-                                        title="Quitar acceso a Plex"
+                                        onClick={async () => {
+                                            try {
+                                                const res = await fetch(`/api/tautulli/reset-warning/${user.id}`, {
+                                                    method: 'POST',
+                                                    credentials: 'include',
+                                                });
+                                                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                                                setHistory({
+                                                    ...history,
+                                                    user: { ...user, warn_count: 0, last_warned_at: null }
+                                                });
+                                            } catch (e) {
+                                                console.error('Error resetting warnings:', e);
+                                            }
+                                        }}
+                                        className="text-xs text-gray-400 hover:text-white bg-gray-700/50 hover:bg-gray-600 px-2 py-1 rounded transition-colors"
+                                        title="Resetear contador de avisos"
                                     >
-                                        <UserMinusIcon className="h-5 w-5 mr-2" />
-                                        Quitar Acceso
+                                        Resetear
                                     </button>
                                 </div>
                             )}
@@ -354,12 +445,110 @@ export default function UserDetail() {
                     </p>
                 </div>
                 <div className="bg-plex-dark rounded-lg p-4 border border-gray-800 flex flex-col justify-center">
-                    <p className="text-gray-400 text-sm mb-1">Tasa de Fidelidad</p>
-                    <p className={`text-3xl font-bold ${paymentRate >= 80 ? 'text-green-400' : paymentRate >= 50 ? 'text-yellow-400' : 'text-red-400'}`}>
-                        {totalMonths > 0 ? `${paymentRate}%` : '--'}
+                    <p className="text-gray-400 text-sm mb-1">Reprod. Último Mes</p>
+                    <p className="text-3xl font-bold text-white">
+                        {activity ? (activity.plays_30d ?? activity.total_plays) : '--'}
                     </p>
+                    {activity && activity.last_seen && (
+                        <p className="text-gray-500 text-xs mt-1">
+                            Último: {new Date(activity.last_seen * 1000).toLocaleDateString()}
+                        </p>
+                    )}
                 </div>
             </div>
+
+            {/* Tautulli Activity Widget */}
+            {activity && (
+                <div className="bg-plex-dark rounded-lg p-5 border border-gray-800">
+                    <h2 className="text-lg font-bold text-white mb-4">🎬 Actividad Plex</h2>
+
+                    {/* Period stats */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
+                        <div className="bg-plex-darker rounded-lg p-3 border border-gray-800 text-center">
+                            <p className="text-gray-500 text-xs">Hoy</p>
+                            <p className="text-xl font-bold text-white">{activity.plays_today ?? 0}</p>
+                            <p className="text-gray-500 text-xs">
+                                {activity.duration_today && activity.duration_today > 0
+                                    ? `${Math.floor(activity.duration_today / 60)}m`
+                                    : '-'}
+                            </p>
+                        </div>
+                        <div className="bg-plex-darker rounded-lg p-3 border border-gray-800 text-center">
+                            <p className="text-gray-500 text-xs">7 días</p>
+                            <p className="text-xl font-bold text-white">{activity.plays_7d ?? 0}</p>
+                            <p className="text-gray-500 text-xs">
+                                {activity.duration_7d && activity.duration_7d > 0
+                                    ? `${Math.floor(activity.duration_7d / 3600)}h ${Math.floor((activity.duration_7d % 3600) / 60)}m`
+                                    : '-'}
+                            </p>
+                        </div>
+                        <div className="bg-plex-darker rounded-lg p-3 border border-gray-800 text-center">
+                            <p className="text-gray-500 text-xs">30 días</p>
+                            <p className="text-xl font-bold text-plex-yellow">{activity.plays_30d ?? 0}</p>
+                            <p className="text-gray-500 text-xs">
+                                {activity.duration_30d && activity.duration_30d > 0
+                                    ? `${Math.floor(activity.duration_30d / 3600)}h ${Math.floor((activity.duration_30d % 3600) / 60)}m`
+                                    : '-'}
+                            </p>
+                        </div>
+                        <div className="bg-plex-darker rounded-lg p-3 border border-gray-800 text-center">
+                            <p className="text-gray-500 text-xs">Total</p>
+                            <p className="text-xl font-bold text-white">{activity.total_plays}</p>
+                            <p className="text-gray-500 text-xs">
+                                {activity.total_duration > 0
+                                    ? `${Math.floor(activity.total_duration / 3600)}h`
+                                    : '-'}
+                            </p>
+                        </div>
+                    </div>
+
+                    {/* Recent history */}
+                    {activity.recent_history && activity.recent_history.length > 0 && (
+                        <div>
+                            <h3 className="text-sm font-medium text-gray-400 mb-2">Últimas reproducciones</h3>
+                            <div className="space-y-2">
+                                {activity.recent_history.map((item, i) => (
+                                    <div key={i} className="flex items-center justify-between bg-plex-darker p-3 rounded-lg border border-gray-800">
+                                        <div className="flex items-center space-x-3 min-w-0">
+                                            <span className="text-lg">
+                                                {item.media_type === 'movie' ? '🎬' : item.media_type === 'episode' ? '📺' : '🎵'}
+                                            </span>
+                                            <div className="min-w-0">
+                                                <p className="text-white text-sm font-medium truncate">{item.title}</p>
+                                                <p className="text-gray-500 text-xs">
+                                                    {item.date ? new Date(item.date * 1000).toLocaleDateString() : ''}
+                                                    {item.duration > 0 && ` · ${Math.floor(item.duration / 60)}min`}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        {item.percent_complete > 0 && (
+                                            <div className="flex items-center space-x-2 flex-shrink-0">
+                                                <div className="w-16 h-1.5 bg-gray-700 rounded-full overflow-hidden">
+                                                    <div
+                                                        className={`h-full rounded-full ${item.percent_complete >= 90 ? 'bg-green-400' : 'bg-plex-yellow'}`}
+                                                        style={{ width: `${Math.min(item.percent_complete, 100)}%` }}
+                                                    />
+                                                </div>
+                                                <span className="text-gray-500 text-xs w-8 text-right">{item.percent_complete}%</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Last seen info */}
+                    <div className="mt-4 pt-3 border-t border-gray-800 flex items-center justify-between">
+                        <span className="text-gray-500 text-xs">
+                            Última vez visto: {activity.last_seen ? new Date(activity.last_seen * 1000).toLocaleDateString() : 'Nunca'}
+                        </span>
+                        {activity.last_played && (
+                            <span className="text-gray-500 text-xs truncate ml-4">{activity.last_played}</span>
+                        )}
+                    </div>
+                </div>
+            )}
 
             {/* Payment history by year */}
             <div className="space-y-6">
@@ -381,12 +570,27 @@ export default function UserDetail() {
                                 return (
                                     <div
                                         key={idx}
-                                        className={`p-3 text-center flex flex-col justify-center min-h-[80px] ${payment?.is_paid
+                                        onClick={async () => {
+                                            if (!payment) return;
+                                            try {
+                                                const res = await fetch(
+                                                    `/api/monthly-payments/${user.id}/${yearData.year}/toggle/${idx + 1}`,
+                                                    { method: 'POST', credentials: 'include' }
+                                                );
+                                                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                                                await loadData();
+                                            } catch (e) {
+                                                console.error('Error toggling payment:', e);
+                                                alert('Error al cambiar el estado del pago.');
+                                            }
+                                        }}
+                                        className={`p-3 text-center flex flex-col justify-center min-h-[80px] ${payment ? 'cursor-pointer hover:brightness-125' : ''} ${payment?.is_paid
                                             ? 'bg-green-900/20 text-green-400'
                                             : payment
                                                 ? 'bg-red-900/20 text-red-400'
                                                 : 'bg-plex-dark/80 text-gray-600'
                                             } ${idx === 0 ? 'rounded-tl-lg lg:rounded-bl-lg' : ''} ${idx === 11 ? 'rounded-br-lg lg:rounded-tr-lg' : ''} ${idx === 2 ? 'sm:rounded-tr-lg md:rounded-none' : ''} ${idx === 5 ? 'md:rounded-tr-lg lg:rounded-none' : ''}`}
+                                        title={payment ? (payment.is_paid ? 'Click para marcar como no pagado' : 'Click para marcar como pagado') : ''}
                                     >
                                         <div className="font-medium text-sm mb-2">{monthName}</div>
                                         {payment ? (
@@ -395,7 +599,7 @@ export default function UserDetail() {
                                                     <CheckCircleIcon className="h-6 w-6 mx-auto opacity-80" />
                                                 ) : (
                                                     <div className="flex flex-col items-center">
-                                                      <XCircleIcon className="h-6 w-6 mx-auto opacity-80" />
+                                                        <XCircleIcon className="h-6 w-6 mx-auto opacity-80" />
                                                     </div>
                                                 )}
                                             </div>
