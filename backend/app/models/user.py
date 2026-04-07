@@ -21,6 +21,5 @@ class User(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
-    subscriptions = relationship("Subscription", back_populates="user")
     payments = relationship("Payment", back_populates="user")
     monthly_payments = relationship("MonthlyPayment", back_populates="user")

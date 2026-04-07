@@ -293,8 +293,20 @@ export interface AuditLogResponse {
   logs: AuditLogEntry[];
 }
 
-export const getAuditLogs = (page: number = 1, limit: number = 50) =>
-  api.get<AuditLogResponse>('/audit/logs', { params: { page, limit } });
+export const getAuditLogs = (
+  page: number = 1,
+  limit: number = 30,
+  action: string = '',
+  entityType: string = '',
+) =>
+  api.get<AuditLogResponse>('/audit/logs', {
+    params: {
+      page,
+      limit,
+      ...(action && { action }),
+      ...(entityType && { entity_type: entityType }),
+    },
+  });
 
 // ---- CSV Export ----
 export const exportYearPayments = async (year: number) => {

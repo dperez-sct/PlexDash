@@ -14,6 +14,8 @@ from app.services.auth import (
     set_setting,
 )
 from app.models.settings import ADMIN_USERNAME_KEY, ADMIN_PASSWORD_KEY
+from app.config import get_settings
+from app.limiter import limiter
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 # Make security optional so we can fall back to cookies
@@ -68,28 +70,28 @@ def get_current_user(
 
 
 @router.post("/login", response_model=LoginResponse)
-def login(response: Response, request: LoginRequest, db: Session = Depends(get_db)):
-    """Authenticate user and set JWT token in HttpOnly cookie."""
-    if not authenticate_user(db, request.username, request.password):
+@limiter.limit("10/minute")
+def login(request: Request, response: Response, login_data: LoginRequest, db: Session = Depends(get_db)):
+    """Authenticate user and set JWT token in HttpOnly cookie. Max 10 attempts per minute per IP."""
+    if not authenticate_user(db, login_data.username, login_data.password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
         )
 
-    access_token = create_access_token(db, data={"sub": request.username})
-    
-    # Set HttpOnly cookie
+    access_token = create_access_token(db, data={"sub": login_data.username})
+
     response.set_cookie(
         key="access_token",
         value=f"Bearer {access_token}",
         httponly=True,
-        secure=False,  # Set to True if using HTTPS
+        secure=get_settings().https_only,
         samesite="lax",
         max_age=60 * 60 * 24 * 7,  # 7 days
     )
-    
+
     return LoginResponse(
-        username=request.username,
+        username=login_data.username,
         message="Login successful"
     )
 

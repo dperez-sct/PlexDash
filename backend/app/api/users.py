@@ -2,12 +2,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
 from pydantic import BaseModel
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app.database import get_db
 from app.models.user import User
-from app.models.subscription import Subscription
-from app.schemas import User as UserSchema, UserCreate, UserUpdate, SubscriptionCreate, Subscription as SubscriptionSchema
+from app.schemas import User as UserSchema, UserCreate, UserUpdate
 from app.services.plex import plex_service
 from app.api.audit import log_action
 
@@ -131,23 +130,6 @@ async def sync_plex_users(db: Session = Depends(get_db)):
     }
 
 
-@router.post("/{user_id}/subscription", response_model=SubscriptionSchema)
-def create_subscription(user_id: int, subscription: SubscriptionCreate, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.id == user_id).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    db_subscription = Subscription(**subscription.model_dump())
-    db.add(db_subscription)
-    db.commit()
-    db.refresh(db_subscription)
-    return db_subscription
-
-
-@router.get("/{user_id}/subscriptions", response_model=List[SubscriptionSchema])
-def get_user_subscriptions(user_id: int, db: Session = Depends(get_db)):
-    subscriptions = db.query(Subscription).filter(Subscription.user_id == user_id).all()
-    return subscriptions
 class UserInvite(BaseModel):
     email: str
 
@@ -180,11 +162,10 @@ async def invite_user(invite: UserInvite, db: Session = Depends(get_db)):
         username=invite.email.split("@")[0],
         email=invite.email,
         is_active=True,
-        created_at=datetime.utcnow()
+        created_at=datetime.now(timezone.utc)
     )
     db.add(new_user)
     db.commit()
-    db.refresh(new_user)
     db.refresh(new_user)
     return new_user
 
@@ -204,13 +185,18 @@ async def remove_user_access(user_id: int, db: Session = Depends(get_db)):
     success = await plex_service.unshare_libraries(identifier)
     if not success:
         raise HTTPException(status_code=500, detail="Failed to remove library access on Plex")
-    
-    # Update local status
-    user.deleted_from_plex = True
+
+    # Mark as inactive but do NOT set deleted_from_plex — that flag is reserved
+    # for Plex sync (user removed from Plex). Keeping it False ensures payment
+    # history remains visible in the grid with "show inactive" filter.
     user.is_active = False
     db.commit()
     db.refresh(user)
-    
+
+    log_action(db, "user_toggled", "user", user.id, {
+        "username": user.username, "is_active": False
+    })
+
     return {"message": "User library access removed successfully"}
 
 
@@ -227,14 +213,19 @@ async def reactivate_user(user_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="User has no username or email")
 
     success = await plex_service.share_libraries(identifier)
-    
+
     if not success:
         raise HTTPException(status_code=500, detail="Failed to restore library access on Plex")
 
-    # Update local status
-    user.deleted_from_plex = False
+    # Reactivate the user. Also clear deleted_from_plex in case they were
+    # previously removed via Plex sync and are now being manually restored.
     user.is_active = True
+    user.deleted_from_plex = False
     db.commit()
     db.refresh(user)
+
+    log_action(db, "user_toggled", "user", user.id, {
+        "username": user.username, "is_active": True
+    })
 
     return user

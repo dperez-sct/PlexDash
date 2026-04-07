@@ -1,12 +1,15 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 import os
 
 from app.config import get_settings
 from app.database import engine, Base, SessionLocal
+from app.limiter import limiter
 from sqlalchemy import text
 from app.api import users, payments, dashboard, settings as settings_router, monthly_payments, auth, audit, expenses
 from app.api import tautulli as tautulli_router
@@ -16,6 +19,15 @@ import app.models.audit_log  # noqa: ensure table is created
 import app.models.expense  # noqa: ensure table is created
 
 settings = get_settings()
+
+# Parse allowed origins: support comma-separated list or single wildcard
+_raw_origins = settings.allowed_origins.strip()
+allowed_origins = (
+    ["*"] if _raw_origins == "*"
+    else [o.strip() for o in _raw_origins.split(",") if o.strip()]
+)
+# CORS with credentials requires explicit origins, not wildcard
+allow_credentials = allowed_origins != ["*"]
 
 
 @asynccontextmanager
@@ -36,10 +48,14 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Rate limiter state and error handler
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=allowed_origins,
+    allow_credentials=allow_credentials,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -81,7 +97,14 @@ app.include_router(tautulli_router.router, prefix="/api")
 
 @app.get("/health")
 def health():
-    return {"status": "healthy"}
+    """Health check — verifies database connectivity."""
+    try:
+        db = SessionLocal()
+        db.execute(text("SELECT 1"))
+        db.close()
+        return {"status": "healthy", "database": "ok"}
+    except Exception:
+        return {"status": "unhealthy", "database": "error"}
 
 @app.get("/")
 async def serve_index():

@@ -7,6 +7,7 @@ from typing import Optional
 from app.database import get_db
 from app.models.settings import Settings, PLEX_URL_KEY, PLEX_TOKEN_KEY, CURRENCY_SYMBOL_KEY, MONTHLY_PRICE_KEY
 from app.services.plex import plex_service
+from app.api.audit import log_action
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
@@ -117,8 +118,14 @@ def get_monthly_price_settings(db: Session = Depends(get_db)):
 
 @router.put("/price")
 def update_monthly_price_settings(settings: MonthlyPriceSettings, db: Session = Depends(get_db)):
-    """Update monthly price."""
+    """Update monthly price and log the change."""
+    old_raw = get_setting(db, MONTHLY_PRICE_KEY)
+    old_price = float(old_raw) if old_raw else 0.0
     set_setting(db, MONTHLY_PRICE_KEY, str(settings.monthly_price))
+    log_action(db, "price_changed", "settings", None, {
+        "old_price": old_price,
+        "new_price": float(settings.monthly_price),
+    })
     return {"message": "Monthly price settings updated successfully"}
 
 

@@ -1,5 +1,5 @@
 import secrets
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import bcrypt
@@ -7,6 +7,7 @@ from jose import JWTError, jwt
 from sqlalchemy.orm import Session
 
 from app.models.settings import Settings, ADMIN_USERNAME_KEY, ADMIN_PASSWORD_KEY, JWT_SECRET_KEY
+from app.config import get_settings
 
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_DAYS = 30
@@ -30,7 +31,11 @@ def set_setting(db: Session, key: str, value: str) -> None:
 
 
 def get_jwt_secret(db: Session) -> str:
-    """Get or create JWT secret key."""
+    """Get JWT secret key. Prefers JWT_SECRET env var over database storage."""
+    env_secret = get_settings().jwt_secret
+    if env_secret:
+        return env_secret
+    # Legacy fallback: read from database (auto-generates on first run)
     secret = get_setting(db, JWT_SECRET_KEY)
     if not secret:
         secret = secrets.token_urlsafe(32)
@@ -80,7 +85,7 @@ def create_access_token(db: Session, data: dict) -> str:
     """Create JWT access token."""
     secret = get_jwt_secret(db)
     to_encode = data.copy()
-    expire = datetime.utcnow() + timedelta(days=ACCESS_TOKEN_EXPIRE_DAYS)
+    expire = datetime.now(timezone.utc) + timedelta(days=ACCESS_TOKEN_EXPIRE_DAYS)
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, secret, algorithm=ALGORITHM)
 

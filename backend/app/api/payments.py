@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func, extract
 from typing import List
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app.database import get_db
 from app.models.payment import Payment
@@ -75,7 +75,7 @@ def mark_payment_paid(payment_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Payment not found")
 
     payment.status = "paid"
-    payment.paid_at = datetime.utcnow()
+    payment.paid_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(payment)
 
@@ -102,7 +102,7 @@ def delete_payment(payment_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/quick/{user_id}", response_model=PaymentSchema)
-def create_quick_payment(user_id: int, db: Session = Depends(get_db)):
+async def create_quick_payment(user_id: int, db: Session = Depends(get_db)):
     """Create a payment for the current month with the default monthly price."""
     # Check if user exists
     user = db.query(User).filter(User.id == user_id).first()
@@ -117,7 +117,7 @@ def create_quick_payment(user_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Monthly price not configured")
 
     # Check if payment already exists for this month
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     existing = db.query(Payment).filter(
         Payment.user_id == user_id,
         extract('year', Payment.created_at) == now.year,
@@ -167,11 +167,14 @@ def create_quick_payment(user_id: int, db: Session = Depends(get_db)):
     db.refresh(payment)
 
     log_action(
-        db, 
-        action="create_quick_payment", 
-        entity_type="payment", 
+        db,
+        action="payment_marked",
+        entity_type="payment",
         entity_id=payment.id,
-        details={"amount": payment.amount, "user_id": payment.user_id, "month": now.month, "year": now.year}
+        details={"username": user.username, "user_id": user.id, "year": now.year, "month": now.month, "amount": float(payment.amount)}
     )
+
+    from app.services.notification_service import send_payment_notification
+    await send_payment_notification(db, user.username, now.month, now.year, amount)
 
     return payment

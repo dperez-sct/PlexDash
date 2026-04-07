@@ -3,7 +3,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import List, Dict
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 import csv
 import io
@@ -115,7 +115,7 @@ async def update_monthly_payment(
 
     # Set paid_at timestamp if marking as paid
     if payment_update.is_paid is True:
-        payment.paid_at = datetime.utcnow()
+        payment.paid_at = datetime.now(timezone.utc)
     elif payment_update.is_paid is False:
         payment.paid_at = None
 
@@ -127,12 +127,12 @@ async def update_monthly_payment(
     username = user.username if user else f"user_{user_id}"
     if payment_update.is_paid is True:
         log_action(db, "payment_marked", "payment", payment.id, {
-            "username": username, "year": year, "month": month,
+            "username": username, "user_id": user_id, "year": year, "month": month,
             "amount": float(payment.amount)
         })
     elif payment_update.is_paid is False:
         log_action(db, "payment_removed", "payment", payment.id, {
-            "username": username, "year": year, "month": month
+            "username": username, "user_id": user_id, "year": year, "month": month
         })
 
     # Send notification on payment received
@@ -172,13 +172,13 @@ async def toggle_month_paid(
             month=month,
             amount=0,
             is_paid=True,
-            paid_at=datetime.utcnow()
+            paid_at=datetime.now(timezone.utc)
         )
         db.add(payment)
     else:
         # Toggle the status
         payment.is_paid = not payment.is_paid
-        payment.paid_at = datetime.utcnow() if payment.is_paid else None
+        payment.paid_at = datetime.now(timezone.utc) if payment.is_paid else None
 
     db.commit()
     db.refresh(payment)
@@ -309,7 +309,7 @@ def bulk_mark_paid(year: int, month: int, db: Session = Depends(get_db)):
     count = 0
     for p in payments:
         p.is_paid = True
-        p.paid_at = datetime.utcnow()
+        p.paid_at = datetime.now(timezone.utc)
         count += 1
     db.commit()
     log_action(db, "bulk_mark_paid", "monthly_payment", None, {"year": year, "month": month, "count": count})

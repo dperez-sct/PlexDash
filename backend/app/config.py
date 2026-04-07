@@ -14,9 +14,14 @@ class Settings(BaseSettings):
     plex_token: str = ""
 
     # Security
-    secret_key: str = "changeme_in_production_please"
-    algorithm: str = "HS256"
-    access_token_expire_minutes: int = 43200  # 30 days
+    # JWT_SECRET: set this in production to a strong random value.
+    # If not set, the app falls back to a secret stored in the database (legacy).
+    jwt_secret: str = ""
+    # HTTPS_ONLY: set to true when serving over HTTPS so session cookies are secure.
+    https_only: bool = False
+    # ALLOWED_ORIGINS: comma-separated list of allowed origins for CORS.
+    # Use "*" only for local development. In production, set to your domain.
+    allowed_origins: str = "*"
 
     class Config:
         env_file = ".env"

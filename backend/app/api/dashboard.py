@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from decimal import Decimal
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app.database import get_db
 from app.models.user import User
@@ -36,8 +36,8 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
     total_revenue = monthly_revenue + legacy_revenue
 
     # Count pending monthly payments for current year/month (only active, non-deleted users)
-    current_year = datetime.now().year
-    current_month = datetime.now().month
+    current_year = datetime.now(timezone.utc).year
+    current_month = datetime.now(timezone.utc).month
 
     pending_monthly = (
         db.query(func.count(MonthlyPayment.id))
@@ -113,8 +113,8 @@ def get_recent_payments(limit: int = 5, db: Session = Depends(get_db)):
 @router.get("/upcoming-dues")
 def get_upcoming_dues(limit: int = 5, db: Session = Depends(get_db)):
     """Get pending monthly payments for current month."""
-    current_year = datetime.now().year
-    current_month = datetime.now().month
+    current_year = datetime.now(timezone.utc).year
+    current_month = datetime.now(timezone.utc).month
 
     payments = (
         db.query(MonthlyPayment, User)
@@ -236,39 +236,45 @@ def get_payment_summary(year: int, month: int, db: Session = Depends(get_db)):
 
 @router.get("/debtors")
 def get_debtors(year: int = None, db: Session = Depends(get_db)):
-    """Get users with unpaid months for a given year."""
+    """Get users with unpaid months for a given year. Uses a single JOIN query."""
+    now = datetime.now(timezone.utc)
     if year is None:
-        year = datetime.now().year
-    current_month = datetime.now().month if year == datetime.now().year else 12
+        year = now.year
+    current_month = now.month if year == now.year else 12
 
-    users = (
-        db.query(User)
-        .filter(User.is_active == True, User.deleted_from_plex == False)
+    # Single query: fetch all unpaid payments with user data in one JOIN
+    unpaid_rows = (
+        db.query(MonthlyPayment, User)
+        .join(User, MonthlyPayment.user_id == User.id)
+        .filter(
+            MonthlyPayment.year == year,
+            MonthlyPayment.month <= current_month,
+            MonthlyPayment.is_paid == False,
+            User.is_active == True,
+            User.deleted_from_plex == False,
+        )
         .all()
     )
 
-    debtors = []
-    for user in users:
-        unpaid = (
-            db.query(MonthlyPayment)
-            .filter(
-                MonthlyPayment.user_id == user.id,
-                MonthlyPayment.year == year,
-                MonthlyPayment.month <= current_month,
-                MonthlyPayment.is_paid == False,
-            )
-            .all()
-        )
-        if unpaid:
-            total_debt = sum(float(p.amount) for p in unpaid)
-            debtors.append({
-                "user_id": user.id,
+    # Aggregate in Python — avoids DB-specific GROUP_CONCAT / ARRAY_AGG
+    debtors_map: dict = {}
+    for mp, user in unpaid_rows:
+        uid = user.id
+        if uid not in debtors_map:
+            debtors_map[uid] = {
+                "user_id": uid,
                 "username": user.username,
                 "thumb": user.thumb,
-                "unpaid_months": len(unpaid),
-                "total_debt": total_debt,
-                "months": [p.month for p in unpaid],
-            })
+                "unpaid_months": 0,
+                "total_debt": 0.0,
+                "months": [],
+            }
+        debtors_map[uid]["unpaid_months"] += 1
+        debtors_map[uid]["total_debt"] += float(mp.amount)
+        debtors_map[uid]["months"].append(mp.month)
 
+    debtors = list(debtors_map.values())
+    for d in debtors:
+        d["months"].sort()
     debtors.sort(key=lambda d: d["total_debt"], reverse=True)
     return debtors

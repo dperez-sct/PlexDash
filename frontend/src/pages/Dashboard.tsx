@@ -19,7 +19,7 @@ import {
   Debtor, PlexServerInfo, ExpenseSummary,
 } from '../services/api';
 
-const MONTH_NAMES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+import { MONTH_NAMES } from '../constants';
 const CHART_COLORS = { paid: '#e5a00d', unpaid: '#ef4444' };
 
 export default function Dashboard() {

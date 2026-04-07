@@ -33,36 +33,6 @@ class User(UserBase):
         from_attributes = True
 
 
-# Subscription schemas
-class SubscriptionBase(BaseModel):
-    plan_name: str = "Standard"
-    amount: Decimal
-    currency: str = "EUR"
-
-
-class SubscriptionCreate(SubscriptionBase):
-    user_id: int
-
-
-class SubscriptionUpdate(BaseModel):
-    plan_name: Optional[str] = None
-    amount: Optional[Decimal] = None
-    status: Optional[str] = None
-    next_payment_date: Optional[datetime] = None
-
-
-class Subscription(SubscriptionBase):
-    id: int
-    user_id: int
-    status: str
-    start_date: datetime
-    next_payment_date: Optional[datetime]
-    created_at: datetime
-
-    class Config:
-        from_attributes = True
-
-
 # Payment schemas
 class PaymentBase(BaseModel):
     amount: Decimal

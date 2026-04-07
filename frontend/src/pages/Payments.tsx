@@ -1,5 +1,6 @@
-import { useEffect, useState, useCallback } from 'react';
-import { ChevronLeftIcon, ChevronRightIcon, CheckCircleIcon, XCircleIcon, ArrowDownTrayIcon } from '@heroicons/react/24/outline';
+import { useEffect, useState, useCallback, useMemo } from 'react';
+import { Link } from 'react-router-dom';
+import { ChevronLeftIcon, ChevronRightIcon, CheckCircleIcon, XCircleIcon, ArrowDownTrayIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline';
 import {
   getYearPayments,
   updateMonthPayment,
@@ -33,6 +34,7 @@ export default function Payments() {
   const [showUnpayModal, setShowUnpayModal] = useState(false);
   const [bulkMenuMonth, setBulkMenuMonth] = useState<number | null>(null);
   const [bulkProcessing, setBulkProcessing] = useState(false);
+  const [search, setSearch] = useState('');
 
   useEffect(() => {
     getCurrencySettings().then((res) => setCurrencySymbol(res.data.currency_symbol));
@@ -170,6 +172,13 @@ export default function Payments() {
     return usersPayments.reduce((sum, user) => sum + calculateUserTotal(user), 0);
   };
 
+  const filteredUsers = useMemo(
+    () => search.trim()
+      ? usersPayments.filter((u) => u.username.toLowerCase().includes(search.toLowerCase()))
+      : usersPayments,
+    [usersPayments, search]
+  );
+
   if (loading && !usersPayments.length) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -184,6 +193,17 @@ export default function Payments() {
       <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
         <h1 className="text-2xl md:text-3xl font-bold text-white">Pagos Mensuales</h1>
         <div className="flex flex-col md:flex-row md:items-center gap-4">
+          {/* Search */}
+          <div className="relative">
+            <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Buscar usuario..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="bg-plex-dark border border-gray-700 text-gray-300 text-sm rounded-lg pl-9 pr-3 py-2 focus:outline-none focus:border-plex-yellow transition-colors w-44"
+            />
+          </div>
           {/* Filters */}
           <div className="flex items-center space-x-4">
             <label className="flex items-center cursor-pointer">
@@ -307,7 +327,7 @@ export default function Payments() {
                   </td>
                 </tr>
               ) : (
-                usersPayments.map((user) => (
+                filteredUsers.map((user) => (
                   <tr key={user.user_id} className="hover:bg-gray-800/30 transition-colors">
                     {/* User column */}
                     <td className="px-4 py-2 sticky left-0 bg-plex-dark z-10">
@@ -326,9 +346,12 @@ export default function Payments() {
                           </div>
                         )}
                         <div className="flex flex-col">
-                          <span className="text-white text-sm font-medium truncate max-w-[120px]">
+                          <Link
+                            to={`/users/${user.user_id}`}
+                            className="text-white text-sm font-medium truncate max-w-[120px] inline-block hover:text-plex-yellow transition-colors"
+                          >
                             {user.username}
-                          </span>
+                          </Link>
                           {!user.payments[1] /* Check active status via user object if available, simplified here */ && (
                             // Placeholder for inactive status if needed
                             null

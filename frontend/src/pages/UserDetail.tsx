@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
     ArrowLeftIcon,
@@ -79,6 +79,24 @@ export default function UserDetail() {
     useEffect(() => {
         loadData();
     }, [id]);
+
+    const debtSummary = useMemo(() => {
+        if (!history) return null;
+        const now = new Date();
+        let unpaidCount = 0;
+        let totalDebt = 0;
+        for (const yearData of history.years) {
+            const maxMonth = yearData.year === now.getFullYear() ? now.getMonth() + 1 : 12;
+            for (let m = 1; m <= maxMonth; m++) {
+                const p = yearData.payments[m];
+                if (p && !p.is_paid && Number(p.amount) > 0) {
+                    unpaidCount++;
+                    totalDebt += Number(p.amount);
+                }
+            }
+        }
+        return unpaidCount > 0 ? { unpaidCount, totalDebt } : null;
+    }, [history]);
 
     const handleQuickPay = async () => {
         if (!history || !monthlyPrice || monthlyPrice <= 0) {
@@ -433,7 +451,7 @@ export default function UserDetail() {
             </div>
 
             {/* Stats cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className={`grid grid-cols-1 gap-4 ${debtSummary ? 'sm:grid-cols-4' : 'sm:grid-cols-3'}`}>
                 <div className="bg-plex-dark rounded-lg p-4 border border-gray-800 flex flex-col justify-center">
                     <p className="text-gray-400 text-sm mb-1">Total Pagado Histórico</p>
                     <p className="text-3xl font-bold text-plex-yellow">{currency}{Number(total_all_time).toFixed(2)}</p>
@@ -455,6 +473,15 @@ export default function UserDetail() {
                         </p>
                     )}
                 </div>
+                {debtSummary && (
+                    <div className="bg-red-900/20 rounded-lg p-4 border border-red-600/30 flex flex-col justify-center">
+                        <p className="text-red-400 text-sm mb-1">Deuda pendiente</p>
+                        <p className="text-3xl font-bold text-red-300">{currency}{debtSummary.totalDebt.toFixed(2)}</p>
+                        <p className="text-gray-400 text-xs mt-1">
+                            {debtSummary.unpaidCount} {debtSummary.unpaidCount === 1 ? 'mes' : 'meses'} sin pagar
+                        </p>
+                    </div>
+                )}
             </div>
 
             {/* Tautulli Activity Widget */}

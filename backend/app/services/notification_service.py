@@ -1,8 +1,11 @@
+import logging
 import httpx
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import Optional
 from decimal import Decimal
+
+logger = logging.getLogger(__name__)
 
 from app.models.monthly_payment import MonthlyPayment
 from app.models.user import User
@@ -19,8 +22,6 @@ def get_setting_value(db: Session, key: str) -> Optional[str]:
 
 async def send_telegram(bot_token: str, chat_id: str, message: str) -> bool:
     """Send a message via Telegram Bot API."""
-    import logging
-    logger = logging.getLogger(__name__)
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
     try:
         async with httpx.AsyncClient() as client:
@@ -30,12 +31,10 @@ async def send_telegram(bot_token: str, chat_id: str, message: str) -> bool:
                 "parse_mode": "HTML",
             })
             if response.status_code != 200:
-                logger.error(f"Telegram API Error: {response.status_code} - {response.text}")
-                print(f"Telegram API Error: {response.status_code} - {response.text}")
+                logger.warning("Telegram API Error: %s - %s", response.status_code, response.text)
             return response.status_code == 200
-    except Exception as e:
-        logger.error(f"Telegram Request Exception: {str(e)}")
-        print(f"Telegram Request Exception: {str(e)}")
+    except Exception:
+        logger.exception("Telegram request failed")
         return False
 
 

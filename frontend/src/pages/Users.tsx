@@ -10,7 +10,9 @@ import {
   UserPlusIcon,
   BanknotesIcon,
   CheckIcon,
-  UserMinusIcon
+  UserMinusIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
 } from '@heroicons/react/24/outline';
 import {
   getUsers,
@@ -43,6 +45,10 @@ export default function Users() {
   // const [sortDirection, setSortDirection] = useState<SortDirection>('asc'); // Unused for now
   const [searchTerm, setSearchTerm] = useState('');
   const [filter, setFilter] = useState<'all' | 'active' | 'inactive' | 'deleted'>('all');
+  const [sortBy, setSortBy] = useState<'username' | 'status'>('username');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 20;
 
   const [historyModal, setHistoryModal] = useState<UserPaymentHistory | null>(null);
   // const [loadingHistory, setLoadingHistory] = useState(false); // Unused for now
@@ -200,7 +206,7 @@ export default function Users() {
   };
 
   const filteredUsers = useMemo(() => {
-    return users.filter((user) => {
+    const filtered = users.filter((user) => {
       const matchesSearch =
         user.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
         user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -212,7 +218,22 @@ export default function Users() {
 
       return matchesSearch && !user.deleted_from_plex;
     });
-  }, [users, searchTerm, filter]);
+
+    filtered.sort((a, b) => {
+      let cmp = 0;
+      if (sortBy === 'username') cmp = a.username.localeCompare(b.username);
+      if (sortBy === 'status') cmp = Number(b.is_active) - Number(a.is_active);
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+
+    return filtered;
+  }, [users, searchTerm, filter, sortBy, sortDir]);
+
+  const totalPages = Math.ceil(filteredUsers.length / PAGE_SIZE);
+  const paginatedUsers = filteredUsers.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
+  // Reset to page 1 when filters or sort changes — handled inline via useEffect
+  useEffect(() => { setPage(1); }, [searchTerm, filter, sortBy]);
 
   if (loading) {
     return (
@@ -278,14 +299,24 @@ export default function Users() {
         <table className="w-full text-left min-w-[700px]">
           <thead className="bg-plex-darker text-gray-400 uppercase text-xs">
             <tr>
-              <th className="px-6 py-4">Usuario</th>
-              <th className="px-6 py-4">Estado</th>
+              <th
+                className="px-6 py-4 cursor-pointer select-none hover:text-white transition-colors"
+                onClick={() => { if (sortBy === 'username') setSortDir(d => d === 'asc' ? 'desc' : 'asc'); else { setSortBy('username'); setSortDir('asc'); } }}
+              >
+                Usuario {sortBy === 'username' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
+              </th>
+              <th
+                className="px-6 py-4 cursor-pointer select-none hover:text-white transition-colors"
+                onClick={() => { if (sortBy === 'status') setSortDir(d => d === 'asc' ? 'desc' : 'asc'); else { setSortBy('status'); setSortDir('asc'); } }}
+              >
+                Estado {sortBy === 'status' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
+              </th>
               <th className="px-6 py-4">Notas</th>
               <th className="px-6 py-4 text-right">Acciones</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-700">
-            {filteredUsers.map((user) => (
+            {paginatedUsers.map((user) => (
               <tr key={user.id} className="hover:bg-plex-darker/50 transition-colors">
                 <td className="px-6 py-4">
                   <div className="flex items-center">
@@ -393,6 +424,32 @@ export default function Users() {
           </tbody>
         </table>
       </div>
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between mt-4">
+          <p className="text-gray-500 text-sm">
+            {filteredUsers.length} usuarios · página {page} de {totalPages}
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page === 1}
+              className="p-2 rounded-lg bg-plex-dark text-gray-400 hover:text-white disabled:opacity-30 transition-colors"
+            >
+              <ChevronLeftIcon className="h-4 w-4" />
+            </button>
+            <span className="text-gray-400 text-sm px-2">{page} / {totalPages}</span>
+            <button
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page === totalPages}
+              className="p-2 rounded-lg bg-plex-dark text-gray-400 hover:text-white disabled:opacity-30 transition-colors"
+            >
+              <ChevronRightIcon className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Invite User Modal */}
       {showInviteModal && (
