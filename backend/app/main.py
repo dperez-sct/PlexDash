@@ -76,6 +76,9 @@ if settings.database_url.startswith("sqlite"):
         if "warn_count" not in cols:
             conn.execute(text("ALTER TABLE users ADD COLUMN warn_count INTEGER DEFAULT 0"))
             conn.commit()
+        if "joined_at" not in cols:
+            conn.execute(text("ALTER TABLE users ADD COLUMN joined_at DATE"))
+            conn.commit()
 
 # Auth router (no authentication required)
 app.include_router(auth.router, prefix="/api")

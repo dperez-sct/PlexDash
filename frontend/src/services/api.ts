@@ -19,7 +19,8 @@ api.interceptors.response.use(
   (error) => {
     if (error.response?.status === 401) {
       if (!window.location.pathname.includes('/login')) {
-        window.location.href = '/login';
+        window.dispatchEvent(new CustomEvent('auth:expired'));
+        setTimeout(() => { window.location.href = '/login'; }, 1500);
       }
     }
     return Promise.reject(error);
@@ -98,7 +99,7 @@ export interface DashboardStats {
 export const getUsers = (includeDeleted: boolean = false) =>
   api.get<User[]>('/users/', { params: { include_deleted: includeDeleted } });
 export const getUser = (id: number) => api.get<User>(`/users/${id}`);
-export const updateUser = (id: number, data: { notes?: string }) => api.put<User>(`/users/${id}`, data);
+export const updateUser = (id: number, data: { notes?: string; kill_stream_enabled?: boolean; joined_at?: string | null }) => api.put<User>(`/users/${id}`, data);
 export const toggleUserActive = (id: number) => api.put<User>(`/users/${id}/toggle-active`);
 export const syncPlexUsers = () => api.post('/users/sync');
 export const createSubscription = (userId: number, data: Partial<Subscription>) =>
@@ -178,6 +179,7 @@ export interface UserYearPayments {
   user_id: number;
   username: string;
   thumb: string | null;
+  joined_at: string | null;
   payments: { [month: number]: MonthlyPayment };
 }
 
@@ -235,6 +237,7 @@ export interface UserPaymentHistory {
     kill_stream_enabled: boolean;
     warn_count: number;
     last_warned_at: string | null;
+    joined_at: string | null;
     created_at: string;
     notes?: string;
   };

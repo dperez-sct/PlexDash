@@ -6,7 +6,7 @@ services:
       context: ../../
       dockerfile: deploy/lightweight/Dockerfile
     container_name: plexdash
-    image: plexdash-lightweight:${IMAGE_TAG:-3.11}
+    image: plexdash-lightweight:${IMAGE_TAG:-3.12}
     restart: unless-stopped
     ports:
       - "${PORT:-8000}:8000"

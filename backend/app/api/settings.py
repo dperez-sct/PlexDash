@@ -119,6 +119,8 @@ def get_monthly_price_settings(db: Session = Depends(get_db)):
 @router.put("/price")
 def update_monthly_price_settings(settings: MonthlyPriceSettings, db: Session = Depends(get_db)):
     """Update monthly price and log the change."""
+    if settings.monthly_price < 0:
+        raise HTTPException(status_code=400, detail="El precio no puede ser negativo")
     old_raw = get_setting(db, MONTHLY_PRICE_KEY)
     old_price = float(old_raw) if old_raw else 0.0
     set_setting(db, MONTHLY_PRICE_KEY, str(settings.monthly_price))

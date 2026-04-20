@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from datetime import datetime
+from datetime import datetime, date
 from decimal import Decimal
 from typing import Optional, Dict, List
 
@@ -19,6 +19,7 @@ class UserCreate(UserBase):
 class UserUpdate(BaseModel):
     notes: Optional[str] = None
     kill_stream_enabled: Optional[bool] = None
+    joined_at: Optional[date] = None
 
 
 class User(UserBase):
@@ -27,6 +28,7 @@ class User(UserBase):
     is_active: bool
     deleted_from_plex: bool = False
     kill_stream_enabled: bool = False
+    joined_at: Optional[date] = None
     created_at: datetime
 
     class Config:
@@ -108,6 +110,7 @@ class UserYearPayments(BaseModel):
     user_id: int
     username: str
     thumb: Optional[str] = None
+    joined_at: Optional[date] = None
     payments: Dict[int, MonthlyPayment]  # month -> payment data
 
 

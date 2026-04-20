@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, extract, or_, and_
 from decimal import Decimal
 from datetime import datetime, timezone
 
@@ -39,6 +39,8 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
     current_year = datetime.now(timezone.utc).year
     current_month = datetime.now(timezone.utc).month
 
+    joined_year = extract('year', User.joined_at)
+    joined_month = extract('month', User.joined_at)
     pending_monthly = (
         db.query(func.count(MonthlyPayment.id))
         .join(User, MonthlyPayment.user_id == User.id)
@@ -47,7 +49,12 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
             MonthlyPayment.year == current_year,
             MonthlyPayment.month <= current_month,
             User.is_active == True,
-            User.deleted_from_plex == False
+            User.deleted_from_plex == False,
+            or_(
+                User.joined_at == None,
+                MonthlyPayment.year > joined_year,
+                and_(MonthlyPayment.year == joined_year, MonthlyPayment.month >= joined_month),
+            ),
         )
         .scalar()
     ) or 0
@@ -188,29 +195,33 @@ def get_monthly_revenue(year: int, db: Session = Depends(get_db)):
 @router.get("/payment-summary/{year}/{month}")
 def get_payment_summary(year: int, month: int, db: Session = Depends(get_db)):
     """Get paid vs unpaid summary for a specific month (for donut chart)."""
+    joined_year = extract('year', User.joined_at)
+    joined_month = extract('month', User.joined_at)
+    joined_ok = or_(
+        User.joined_at == None,
+        MonthlyPayment.year > joined_year,
+        and_(MonthlyPayment.year == joined_year, MonthlyPayment.month >= joined_month),
+    )
+
+    base_filters = [
+        MonthlyPayment.year == year,
+        MonthlyPayment.month == month,
+        User.is_active == True,
+        User.deleted_from_plex == False,
+        joined_ok,
+    ]
+
     paid = (
         db.query(func.count(MonthlyPayment.id))
         .join(User, MonthlyPayment.user_id == User.id)
-        .filter(
-            MonthlyPayment.year == year,
-            MonthlyPayment.month == month,
-            MonthlyPayment.is_paid == True,
-            User.is_active == True,
-            User.deleted_from_plex == False
-        )
+        .filter(*base_filters, MonthlyPayment.is_paid == True)
         .scalar()
     ) or 0
 
     unpaid = (
         db.query(func.count(MonthlyPayment.id))
         .join(User, MonthlyPayment.user_id == User.id)
-        .filter(
-            MonthlyPayment.year == year,
-            MonthlyPayment.month == month,
-            MonthlyPayment.is_paid == False,
-            User.is_active == True,
-            User.deleted_from_plex == False
-        )
+        .filter(*base_filters, MonthlyPayment.is_paid == False)
         .scalar()
     ) or 0
 
@@ -259,6 +270,11 @@ def get_debtors(year: int = None, db: Session = Depends(get_db)):
     # Aggregate in Python — avoids DB-specific GROUP_CONCAT / ARRAY_AGG
     debtors_map: dict = {}
     for mp, user in unpaid_rows:
+        # Skip months before joined_at if set
+        if user.joined_at:
+            j = user.joined_at
+            if mp.year < j.year or (mp.year == j.year and mp.month < j.month):
+                continue
         uid = user.id
         if uid not in debtors_map:
             debtors_map[uid] = {

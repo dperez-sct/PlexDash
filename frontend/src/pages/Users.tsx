@@ -1,4 +1,6 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import { useToast } from '../contexts/ToastContext';
+import ConfirmModal from '../components/ConfirmModal';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowPathIcon,
@@ -62,6 +64,10 @@ export default function Users() {
   const [inviteMessage, setInviteMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
 
   const [processingPayment, setProcessingPayment] = useState<number | null>(null);
+  const [confirmModal, setConfirmModal] = useState<{
+    title: string; message: string; confirmLabel?: string; confirmClass?: string; onConfirm: () => void;
+  } | null>(null);
+  const { toast } = useToast();
 
   const fetchData = async () => {
     try {
@@ -74,7 +80,7 @@ export default function Users() {
       setCurrencySymbol(currencyResponse.data.currency_symbol);
       setMonthlyPrice(priceResponse.data.monthly_price);
     } catch (error) {
-      console.error('Error fetching data:', error);
+      toast('Error al cargar usuarios', 'error');
     } finally {
       setLoading(false);
     }
@@ -89,8 +95,9 @@ export default function Users() {
     try {
       await syncPlexUsers();
       await fetchData();
+      toast('Usuarios sincronizados correctamente', 'success');
     } catch (error) {
-      console.error('Error syncing users:', error);
+      toast('Error al sincronizar con Plex', 'error');
     } finally {
       setSyncing(false);
     }
@@ -101,7 +108,7 @@ export default function Users() {
       await toggleUserActive(user.id);
       setUsers(users.map((u) => (u.id === user.id ? { ...u, is_active: !u.is_active } : u)));
     } catch (error) {
-      console.error('Error toggling user status:', error);
+      toast('Error al cambiar estado del usuario', 'error');
     }
   };
 
@@ -116,55 +123,53 @@ export default function Users() {
       setUsers(users.map((u) => (u.id === userId ? { ...u, notes: noteContent } : u)));
       setEditingNote(null);
     } catch (error) {
-      console.error('Error updating note:', error);
+      toast('Error al guardar nota', 'error');
     }
   };
 
   const handleViewHistory = async (userId: number) => {
-    // setLoadingHistory(true);
     try {
       const response = await getUserPaymentHistory(userId);
       setHistoryModal(response.data);
     } catch (error) {
-      console.error('Error fetching payment history:', error);
-    } finally {
-      // setLoadingHistory(false);
+      toast('Error al cargar historial', 'error');
     }
   };
 
   const handleQuickPay = async (user: User) => {
     if (!monthlyPrice || monthlyPrice <= 0) {
-      alert("Por favor, configura el precio mensual en Ajustes primero.");
+      toast('Configura el precio mensual en Ajustes primero', 'warning');
       return;
     }
-
-    if (!confirm(`¿Registrar pago de ${currencySymbol}${monthlyPrice} para ${user.username}?`)) {
-      return;
-    }
-
-    setProcessingPayment(user.id);
-    try {
-      await createQuickPayment(user.id);
-      alert("Pago registrado correctamente");
-      // Optionally refresh history if open or stats
-    } catch (error: any) {
-      console.error('Error processing quick payment:', error);
-      alert(error.response?.data?.detail || "Error al registrar el pago");
-    } finally {
-      setProcessingPayment(null);
-    }
+    setConfirmModal({
+      title: 'Registrar pago',
+      message: `¿Registrar pago de ${currencySymbol}${monthlyPrice} para ${user.username}?`,
+      confirmLabel: 'Registrar',
+      confirmClass: 'bg-green-600 hover:bg-green-700 text-white',
+      onConfirm: async () => {
+        setConfirmModal(null);
+        setProcessingPayment(user.id);
+        try {
+          await createQuickPayment(user.id);
+          toast(`Pago registrado para ${user.username}`, 'success');
+        } catch (error: any) {
+          toast(error.response?.data?.detail || 'Error al registrar el pago', 'error');
+        } finally {
+          setProcessingPayment(null);
+        }
+      },
+    });
   };
 
   const handleInviteUser = async (e: React.FormEvent) => {
     e.preventDefault();
     setInviting(true);
     setInviteMessage(null);
-
     try {
       await inviteUser(inviteEmail);
       setInviteMessage({ type: 'success', text: `Invitación enviada a ${inviteEmail}` });
       setInviteEmail('');
-      handleSync(); // Refresh list to show pending user if applicable
+      handleSync();
       setTimeout(() => setShowInviteModal(false), 2000);
     } catch (error: any) {
       setInviteMessage({
@@ -177,32 +182,40 @@ export default function Users() {
   };
 
   const handleRemoveAccess = async (user: User) => {
-    if (!confirm(`¿Estás seguro que quieres quitar el acceso a la biblioteca para ${user.username}? Esta acción dejará de compartir el servidor con este usuario.`)) {
-      return;
-    }
-
-    try {
-      await removeUserAccess(user.id);
-      setUsers(users.map((u) => (u.id === user.id ? { ...u, deleted_from_plex: true, is_active: false } : u)));
-    } catch (error) {
-      console.error('Error removing user access:', error);
-      alert('Error al quitar acceso. Asegúrate que la conexión con Plex es correcta.');
-    }
+    setConfirmModal({
+      title: 'Quitar acceso a Plex',
+      message: `¿Estás seguro que quieres quitar el acceso a la biblioteca para ${user.username}? Esta acción dejará de compartir el servidor con este usuario.`,
+      confirmLabel: 'Quitar acceso',
+      onConfirm: async () => {
+        setConfirmModal(null);
+        try {
+          await removeUserAccess(user.id);
+          setUsers(users.map((u) => (u.id === user.id ? { ...u, deleted_from_plex: true, is_active: false } : u)));
+          toast(`Acceso eliminado para ${user.username}`, 'success');
+        } catch (error) {
+          toast('Error al quitar acceso. Asegúrate que la conexión con Plex es correcta.', 'error');
+        }
+      },
+    });
   };
 
   const handleReactivateUser = async (user: User) => {
-    if (!confirm(`¿Quieres reactivar a ${user.username} y darle acceso a todas las bibliotecas nuevamente?`)) {
-      return;
-    }
-
-    try {
-      await reactivateUser(user.id);
-      setUsers(users.map((u) => (u.id === user.id ? { ...u, deleted_from_plex: false, is_active: true } : u)));
-      alert(`Usuario ${user.username} reactivado correctamente.`);
-    } catch (error) {
-      console.error('Error reactivating user:', error);
-      alert('Error al reactivar usuario.');
-    }
+    setConfirmModal({
+      title: 'Reactivar usuario',
+      message: `¿Quieres reactivar a ${user.username} y darle acceso a todas las bibliotecas nuevamente?`,
+      confirmLabel: 'Reactivar',
+      confirmClass: 'bg-blue-600 hover:bg-blue-700 text-white',
+      onConfirm: async () => {
+        setConfirmModal(null);
+        try {
+          await reactivateUser(user.id);
+          setUsers(users.map((u) => (u.id === user.id ? { ...u, deleted_from_plex: false, is_active: true } : u)));
+          toast(`${user.username} reactivado correctamente`, 'success');
+        } catch (error) {
+          toast('Error al reactivar usuario', 'error');
+        }
+      },
+    });
   };
 
   const filteredUsers = useMemo(() => {
@@ -588,6 +601,17 @@ export default function Users() {
             </div>
           </div>
         </div>
+      )}
+
+      {confirmModal && (
+        <ConfirmModal
+          title={confirmModal.title}
+          message={confirmModal.message}
+          confirmLabel={confirmModal.confirmLabel}
+          confirmClass={confirmModal.confirmClass}
+          onConfirm={confirmModal.onConfirm}
+          onCancel={() => setConfirmModal(null)}
+        />
       )}
     </div>
   );

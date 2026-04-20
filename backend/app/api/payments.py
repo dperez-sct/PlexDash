@@ -101,61 +101,65 @@ def delete_payment(payment_id: int, db: Session = Depends(get_db)):
     return {"message": "Payment deleted"}
 
 
-@router.post("/quick/{user_id}", response_model=PaymentSchema)
+@router.post("/quick/{user_id}")
 async def create_quick_payment(user_id: int, db: Session = Depends(get_db)):
-    """Create a payment for the current month with the default monthly price."""
-    # Check if user exists
+    """Mark the next unpaid month after the last paid month as paid."""
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    # Get monthly price
     price_setting = db.query(Settings).filter(Settings.key == MONTHLY_PRICE_KEY).first()
     amount = float(price_setting.value) if price_setting and price_setting.value else 0.0
-
     if amount <= 0:
         raise HTTPException(status_code=400, detail="Monthly price not configured")
 
-    # Check if payment already exists for this month
     now = datetime.now(timezone.utc)
-    existing = db.query(Payment).filter(
-        Payment.user_id == user_id,
-        extract('year', Payment.created_at) == now.year,
-        extract('month', Payment.created_at) == now.month,
-        Payment.status == "paid"
-    ).first()
 
-    if existing:
-        raise HTTPException(status_code=400, detail="Payment already exists for this month")
-
-    # Create payment
-    payment = Payment(
-        user_id=user_id,
-        amount=amount,
-        currency="EUR", # Default to EUR as per user request context (Euro symbol mentioned) or make dynamic later
-        status="paid",
-        paid_at=now,
-        notes=f"Quick payment for {now.strftime('%B %Y')}",
-        created_at=now
+    # Find the last paid month for this user
+    last_paid = (
+        db.query(MonthlyPayment)
+        .filter(MonthlyPayment.user_id == user_id, MonthlyPayment.is_paid == True)
+        .order_by(MonthlyPayment.year.desc(), MonthlyPayment.month.desc())
+        .first()
     )
-    
-    db.add(payment)
-    
-    # Also update the MonthlyPayment table so it reflects in the dashboard
+
+    if last_paid:
+        target_month = last_paid.month + 1
+        target_year = last_paid.year
+        if target_month > 12:
+            target_month = 1
+            target_year += 1
+    else:
+        target_year = now.year
+        target_month = now.month
+
+    # Check if target is already paid
+    existing = db.query(MonthlyPayment).filter(
+        MonthlyPayment.user_id == user_id,
+        MonthlyPayment.year == target_year,
+        MonthlyPayment.month == target_month,
+        MonthlyPayment.is_paid == True,
+    ).first()
+    if existing:
+        raise HTTPException(
+            status_code=400,
+            detail=f"El mes {target_month}/{target_year} ya está registrado como pagado"
+        )
+
     monthly = db.query(MonthlyPayment).filter(
         MonthlyPayment.user_id == user_id,
-        MonthlyPayment.year == now.year,
-        MonthlyPayment.month == now.month
+        MonthlyPayment.year == target_year,
+        MonthlyPayment.month == target_month,
     ).first()
-    
+
     if not monthly:
         monthly = MonthlyPayment(
             user_id=user_id,
-            year=now.year,
-            month=now.month,
+            year=target_year,
+            month=target_month,
             amount=amount,
             is_paid=True,
-            paid_at=now
+            paid_at=now,
         )
         db.add(monthly)
     else:
@@ -164,17 +168,17 @@ async def create_quick_payment(user_id: int, db: Session = Depends(get_db)):
         monthly.amount = amount
 
     db.commit()
-    db.refresh(payment)
+    db.refresh(monthly)
 
     log_action(
         db,
         action="payment_marked",
-        entity_type="payment",
-        entity_id=payment.id,
-        details={"username": user.username, "user_id": user.id, "year": now.year, "month": now.month, "amount": float(payment.amount)}
+        entity_type="monthly_payment",
+        entity_id=monthly.id,
+        details={"username": user.username, "user_id": user.id, "year": target_year, "month": target_month, "amount": amount},
     )
 
     from app.services.notification_service import send_payment_notification
-    await send_payment_notification(db, user.username, now.month, now.year, amount)
+    await send_payment_notification(db, user.username, target_month, target_year, amount)
 
-    return payment
+    return {"id": monthly.id, "year": target_year, "month": target_month, "amount": amount, "is_paid": True}

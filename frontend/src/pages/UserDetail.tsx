@@ -1,4 +1,6 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
+import { useToast } from '../contexts/ToastContext';
+import ConfirmModal from '../components/ConfirmModal';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
     ArrowLeftIcon,
@@ -37,6 +39,12 @@ export default function UserDetail() {
     const [processingPayment, setProcessingPayment] = useState(false);
     const [editingNote, setEditingNote] = useState(false);
     const [noteContent, setNoteContent] = useState('');
+    const [editingJoinedAt, setEditingJoinedAt] = useState(false);
+    const [joinedAtValue, setJoinedAtValue] = useState('');
+    const [confirmModal, setConfirmModal] = useState<{
+        title: string; message: string; confirmLabel?: string; confirmClass?: string; onConfirm: () => void;
+    } | null>(null);
+    const { toast } = useToast();
     const [activity, setActivity] = useState<{
         total_plays: number; total_duration: number;
         last_seen: number | null; last_played: string;
@@ -56,6 +64,7 @@ export default function UserDetail() {
             ]);
             setHistory(histRes.data);
             setNoteContent(histRes.data.user.notes || '');
+            setJoinedAtValue(histRes.data.user.joined_at || '');
             setCurrency(currRes.data.currency_symbol);
             setMonthlyPrice(priceRes.data.monthly_price);
 
@@ -83,11 +92,14 @@ export default function UserDetail() {
     const debtSummary = useMemo(() => {
         if (!history) return null;
         const now = new Date();
+        const joinedAt = history.user.joined_at ? new Date(history.user.joined_at) : null;
         let unpaidCount = 0;
         let totalDebt = 0;
         for (const yearData of history.years) {
             const maxMonth = yearData.year === now.getFullYear() ? now.getMonth() + 1 : 12;
-            for (let m = 1; m <= maxMonth; m++) {
+            const minMonth = joinedAt && yearData.year === joinedAt.getFullYear() ? joinedAt.getMonth() + 1 : 1;
+            if (joinedAt && yearData.year < joinedAt.getFullYear()) continue;
+            for (let m = minMonth; m <= maxMonth; m++) {
                 const p = yearData.payments[m];
                 if (p && !p.is_paid && Number(p.amount) > 0) {
                     unpaidCount++;
@@ -100,25 +112,28 @@ export default function UserDetail() {
 
     const handleQuickPay = async () => {
         if (!history || !monthlyPrice || monthlyPrice <= 0) {
-            alert("Por favor, configura el precio mensual en Ajustes primero.");
+            toast('Configura el precio mensual en Ajustes primero', 'warning');
             return;
         }
-
-        if (!confirm(`¿Registrar pago de ${currency}${monthlyPrice} para ${history.user.username}?`)) {
-            return;
-        }
-
-        setProcessingPayment(true);
-        try {
-            await createQuickPayment(history.user.id);
-            alert("Pago registrado correctamente");
-            await loadData(); // Reload history
-        } catch (error: any) {
-            console.error('Error processing quick payment:', error);
-            alert(error.response?.data?.detail || "Error al registrar el pago");
-        } finally {
-            setProcessingPayment(false);
-        }
+        setConfirmModal({
+            title: 'Registrar pago',
+            message: `¿Registrar pago de ${currency}${monthlyPrice} para ${history.user.username}?`,
+            confirmLabel: 'Registrar',
+            confirmClass: 'bg-green-600 hover:bg-green-700 text-white',
+            onConfirm: async () => {
+                setConfirmModal(null);
+                setProcessingPayment(true);
+                try {
+                    await createQuickPayment(history.user.id);
+                    toast('Pago registrado correctamente', 'success');
+                    await loadData();
+                } catch (error: any) {
+                    toast(error.response?.data?.detail || 'Error al registrar el pago', 'error');
+                } finally {
+                    setProcessingPayment(false);
+                }
+            },
+        });
     };
 
     const handleToggleActive = async () => {
@@ -140,63 +155,62 @@ export default function UserDetail() {
 
     const handleRemoveAccess = async () => {
         if (!history) return;
-        if (!confirm(`¿Estás seguro que quieres quitar el acceso a la biblioteca para ${history.user.username}? Esta acción dejará de compartir el servidor con este usuario.`)) {
-            return;
-        }
-
-        try {
-            await removeUserAccess(history.user.id);
-            setHistory({
-                ...history,
-                user: {
-                    ...history.user,
-                    deleted_from_plex: true,
-                    is_active: false
+        setConfirmModal({
+            title: 'Quitar acceso a Plex',
+            message: `¿Estás seguro que quieres quitar el acceso a la biblioteca para ${history.user.username}? Esta acción dejará de compartir el servidor con este usuario.`,
+            confirmLabel: 'Quitar acceso',
+            onConfirm: async () => {
+                setConfirmModal(null);
+                try {
+                    await removeUserAccess(history.user.id);
+                    setHistory({ ...history, user: { ...history.user, deleted_from_plex: true, is_active: false } });
+                    toast('Acceso eliminado correctamente', 'success');
+                } catch (error) {
+                    toast('Error al quitar acceso. Asegúrate que la conexión con Plex es correcta.', 'error');
                 }
-            });
-        } catch (error) {
-            console.error('Error removing user access:', error);
-            alert('Error al quitar acceso. Asegúrate que la conexión con Plex es correcta.');
-        }
+            },
+        });
     };
 
     const handleReactivateUser = async () => {
         if (!history) return;
-        if (!confirm(`¿Quieres reactivar a ${history.user.username} y darle acceso a todas las bibliotecas nuevamente?`)) {
-            return;
-        }
-
-        try {
-            await reactivateUser(history.user.id);
-            setHistory({
-                ...history,
-                user: {
-                    ...history.user,
-                    deleted_from_plex: false,
-                    is_active: true
+        setConfirmModal({
+            title: 'Reactivar usuario',
+            message: `¿Quieres reactivar a ${history.user.username} y darle acceso a todas las bibliotecas nuevamente?`,
+            confirmLabel: 'Reactivar',
+            confirmClass: 'bg-blue-600 hover:bg-blue-700 text-white',
+            onConfirm: async () => {
+                setConfirmModal(null);
+                try {
+                    await reactivateUser(history.user.id);
+                    setHistory({ ...history, user: { ...history.user, deleted_from_plex: false, is_active: true } });
+                    toast(`${history.user.username} reactivado correctamente`, 'success');
+                } catch (error) {
+                    toast('Error al reactivar usuario', 'error');
                 }
-            });
-            alert(`Usuario ${history.user.username} reactivado correctamente.`);
-        } catch (error) {
-            console.error('Error reactivating user:', error);
-            alert('Error al reactivar usuario.');
-        }
+            },
+        });
     };
 
     const handleSaveNote = async () => {
         if (!history) return;
         try {
             await updateUser(history.user.id, { notes: noteContent });
-            setHistory({
-                ...history,
-                user: {
-                    ...history.user,
-                    notes: noteContent
-                }
-            });
+            setHistory({ ...history, user: { ...history.user, notes: noteContent } });
             setEditingNote(false);
         } catch (error) {
             console.error('Error updating note:', error);
+        }
+    };
+
+    const handleSaveJoinedAt = async () => {
+        if (!history) return;
+        try {
+            await updateUser(history.user.id, { joined_at: joinedAtValue || null });
+            setHistory({ ...history, user: { ...history.user, joined_at: joinedAtValue || null } });
+            setEditingJoinedAt(false);
+        } catch (error) {
+            console.error('Error updating joined_at:', error);
         }
     };
 
@@ -264,9 +278,31 @@ export default function UserDetail() {
                                     </span>
                                 )}
                                 <span className="text-gray-500 text-sm hidden sm:inline">•</span>
-                                <span className="text-gray-500 text-sm">
-                                    Miembro desde {user.created_at ? new Date(user.created_at).toLocaleDateString('es-ES', { year: 'numeric', month: 'long' }) : 'N/A'}
-                                </span>
+                                {editingJoinedAt ? (
+                                    <div className="flex items-center gap-1">
+                                        <input
+                                            type="date"
+                                            value={joinedAtValue}
+                                            onChange={(e) => setJoinedAtValue(e.target.value)}
+                                            className="bg-plex-darker text-white border border-gray-600 rounded px-2 py-0.5 text-sm focus:border-plex-yellow focus:outline-none"
+                                            autoFocus
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter') handleSaveJoinedAt();
+                                                if (e.key === 'Escape') setEditingJoinedAt(false);
+                                            }}
+                                        />
+                                        <button onClick={handleSaveJoinedAt} className="text-green-400 hover:text-green-300 p-0.5"><CheckIcon className="h-4 w-4" /></button>
+                                        <button onClick={() => setEditingJoinedAt(false)} className="text-gray-500 hover:text-gray-300 p-0.5"><XMarkIcon className="h-4 w-4" /></button>
+                                    </div>
+                                ) : (
+                                    <button
+                                        onClick={() => setEditingJoinedAt(true)}
+                                        className="text-gray-500 text-sm hover:text-plex-yellow transition-colors flex items-center gap-1 group"
+                                    >
+                                        Alta: {user.joined_at ? new Date(user.joined_at + 'T00:00:00').toLocaleDateString('es-ES', { year: 'numeric', month: 'long' }) : <span className="italic">sin fecha</span>}
+                                        <PencilIcon className="h-3 w-3 opacity-0 group-hover:opacity-100" />
+                                    </button>
+                                )}
                             </div>
                         </div>
                     </div>
@@ -340,8 +376,7 @@ export default function UserDetail() {
                                                 user: { ...user, kill_stream_enabled: newVal }
                                             });
                                         } catch (e) {
-                                            console.error('Error updating kill_stream_enabled:', e);
-                                            alert('Error al guardar el cambio. Revisa la consola.');
+                                            toast('Error al guardar el cambio', 'error');
                                         }
                                     }}
                                     className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${user.kill_stream_enabled ? 'bg-plex-yellow' : 'bg-gray-600'
@@ -597,19 +632,32 @@ export default function UserDetail() {
                                 return (
                                     <div
                                         key={idx}
-                                        onClick={async () => {
+                                        onClick={() => {
                                             if (!payment) return;
-                                            try {
-                                                const res = await fetch(
-                                                    `/api/monthly-payments/${user.id}/${yearData.year}/toggle/${idx + 1}`,
-                                                    { method: 'POST', credentials: 'include' }
-                                                );
-                                                if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                                                await loadData();
-                                            } catch (e) {
-                                                console.error('Error toggling payment:', e);
-                                                alert('Error al cambiar el estado del pago.');
-                                            }
+                                            const willPay = !payment.is_paid;
+                                            setConfirmModal({
+                                                title: willPay ? 'Marcar como pagado' : 'Quitar pago',
+                                                message: willPay
+                                                    ? `¿Marcar ${MONTHS[idx]} ${yearData.year} como pagado para ${user.username}?`
+                                                    : `¿Quitar el pago de ${MONTHS[idx]} ${yearData.year} para ${user.username}?`,
+                                                confirmLabel: willPay ? 'Marcar pagado' : 'Quitar pago',
+                                                confirmClass: willPay
+                                                    ? 'bg-green-600 hover:bg-green-700 text-white'
+                                                    : 'bg-red-600 hover:bg-red-700 text-white',
+                                                onConfirm: async () => {
+                                                    setConfirmModal(null);
+                                                    try {
+                                                        const res = await fetch(
+                                                            `/api/monthly-payments/${user.id}/${yearData.year}/toggle/${idx + 1}`,
+                                                            { method: 'POST', credentials: 'include' }
+                                                        );
+                                                        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                                                        await loadData();
+                                                    } catch (e) {
+                                                        toast('Error al cambiar el estado del pago', 'error');
+                                                    }
+                                                },
+                                            });
                                         }}
                                         className={`p-3 text-center flex flex-col justify-center min-h-[80px] ${payment ? 'cursor-pointer hover:brightness-125' : ''} ${payment?.is_paid
                                             ? 'bg-green-900/20 text-green-400'
@@ -640,6 +688,17 @@ export default function UserDetail() {
                     </div>
                 ))}
             </div>
+
+            {confirmModal && (
+                <ConfirmModal
+                    title={confirmModal.title}
+                    message={confirmModal.message}
+                    confirmLabel={confirmModal.confirmLabel}
+                    confirmClass={confirmModal.confirmClass}
+                    onConfirm={confirmModal.onConfirm}
+                    onCancel={() => setConfirmModal(null)}
+                />
+            )}
         </div>
     );
 }

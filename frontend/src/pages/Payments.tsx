@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useToast } from '../contexts/ToastContext';
 import { Link } from 'react-router-dom';
 import { ChevronLeftIcon, ChevronRightIcon, CheckCircleIcon, XCircleIcon, ArrowDownTrayIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline';
 import {
@@ -35,6 +36,7 @@ export default function Payments() {
   const [bulkMenuMonth, setBulkMenuMonth] = useState<number | null>(null);
   const [bulkProcessing, setBulkProcessing] = useState(false);
   const [search, setSearch] = useState('');
+  const { toast } = useToast();
 
   useEffect(() => {
     getCurrencySettings().then((res) => setCurrencySymbol(res.data.currency_symbol));
@@ -127,9 +129,9 @@ export default function Payments() {
       await fetchData();
       clearSelection();
       setShowConfirmModal(false);
+      toast('Pagos registrados correctamente', 'success');
     } catch (error) {
-      console.error('Error processing bulk payments:', error);
-      alert('Error al procesar pagos. Por favor intente de nuevo.');
+      toast('Error al procesar pagos. Por favor intente de nuevo.', 'error');
     } finally {
       setIsProcessing(false);
     }
@@ -150,9 +152,9 @@ export default function Payments() {
       await fetchData();
       clearSelection();
       setShowUnpayModal(false);
+      toast('Pagos eliminados correctamente', 'success');
     } catch (error) {
-      console.error('Error removing payments:', error);
-      alert('Error al quitar pagos. Por favor intente de nuevo.');
+      toast('Error al quitar pagos. Por favor intente de nuevo.', 'error');
     } finally {
       setIsProcessing(false);
     }
@@ -368,6 +370,23 @@ export default function Payments() {
                       const amount = payment ? Number(payment.amount) : 0;
                       const isSelected = selectedCells.has(getCellId(user.user_id, month));
                       const isUnpaySelected = isSelected && selectionMode === 'unpay';
+
+                      // Gray out months before the user's joined_at date
+                      const joinedAt = user.joined_at ? new Date(user.joined_at + 'T00:00:00') : null;
+                      const beforeJoined = joinedAt
+                        ? (year < joinedAt.getFullYear() ||
+                           (year === joinedAt.getFullYear() && month < joinedAt.getMonth() + 1))
+                        : false;
+
+                      if (beforeJoined) {
+                        return (
+                          <td key={month} className="px-1 py-1">
+                            <div className="h-9 rounded-md flex items-center justify-center border border-transparent">
+                              <span className="text-xs text-gray-700">—</span>
+                            </div>
+                          </td>
+                        );
+                      }
 
                       return (
                         <td key={month} className="px-1 py-1">

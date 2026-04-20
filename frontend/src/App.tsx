@@ -1,8 +1,12 @@
+import { useEffect } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
+import { ToastProvider } from './contexts/ToastContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import Layout from './components/Layout';
 import ErrorBoundary from './components/ErrorBoundary';
+import ToastContainer from './components/ToastContainer';
+import InstallBanner from './components/InstallBanner';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Users from './pages/Users';
@@ -14,9 +18,18 @@ import Expenses from './pages/Expenses';
 import Help from './pages/Help';
 
 function App() {
+  useEffect(() => {
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch(() => {});
+    }
+  }, []);
+
   return (
+    <ToastProvider>
     <AuthProvider>
       <ErrorBoundary>
+        <ToastContainer />
+        <InstallBanner />
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route
@@ -41,6 +54,7 @@ function App() {
         </Routes>
       </ErrorBoundary>
     </AuthProvider>
+    </ToastProvider>
   );
 }
 

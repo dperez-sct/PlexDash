@@ -4,14 +4,15 @@ from sqlalchemy.orm import Session
 from sqlalchemy import extract
 from pydantic import BaseModel
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app.database import get_db
-from app.models.settings import Settings
+from app.models.settings import Settings, DEBT_PERIOD_KEY
 from app.models.user import User
 from app.models.monthly_payment import MonthlyPayment
 from app.services.tautulli import tautulli_service
 from app.api.settings import get_setting, set_setting
+from datetime import date as date_type
 
 router = APIRouter(tags=["tautulli"])
 
@@ -21,11 +22,14 @@ router = APIRouter(tags=["tautulli"])
 settings_router = APIRouter(prefix="/settings/tautulli", tags=["tautulli-settings"])
 
 
+DEBT_PERIODS = ["current_year", "last_3_months", "last_6_months", "last_12_months", "since_joined", "all_time"]
+
 class TautulliSettings(BaseModel):
     tautulli_url: Optional[str] = None
     tautulli_api_key: Optional[str] = None
     kill_message: Optional[str] = None
     warn_mode: Optional[str] = None
+    debt_period: Optional[str] = None
 
 
 @settings_router.get("")
@@ -37,6 +41,7 @@ def get_tautulli_settings(db: Session = Depends(get_db)):
         "configured": bool(url and api_key),
         "kill_message": get_setting(db, "tautulli_kill_message") or "",
         "warn_mode": get_setting(db, "kill_stream_warn_mode") or WARN_MODE_ALWAYS,
+        "debt_period": get_setting(db, DEBT_PERIOD_KEY) or "current_year",
     }
 
 
@@ -52,6 +57,10 @@ def update_tautulli_settings(data: TautulliSettings, db: Session = Depends(get_d
         if data.warn_mode not in [WARN_MODE_ALWAYS, WARN_MODE_ONCE_PER_DAY, WARN_MODE_DISABLED]:
             raise HTTPException(status_code=400, detail=f"Invalid warn_mode: {data.warn_mode}")
         set_setting(db, "kill_stream_warn_mode", data.warn_mode)
+    if data.debt_period is not None:
+        if data.debt_period not in DEBT_PERIODS:
+            raise HTTPException(status_code=400, detail=f"Invalid debt_period: {data.debt_period}")
+        set_setting(db, DEBT_PERIOD_KEY, data.debt_period)
     # Reload service config
     tautulli_service.load_from_db(db)
     return {"message": "Tautulli settings saved"}
@@ -115,17 +124,48 @@ async def check_user_payment(plex_id: str, db: Session = Depends(get_db)):
             "warn_mode": warn_mode,
         }
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     current_year = now.year
     current_month = now.month
+    debt_period = get_setting(db, DEBT_PERIOD_KEY) or "current_year"
 
-    # Count unpaid months up to and including current month
-    unpaid_months = db.query(MonthlyPayment).filter(
+    # Build date range based on the configured debt period
+    q = db.query(MonthlyPayment).filter(
         MonthlyPayment.user_id == user.id,
-        MonthlyPayment.year == current_year,
-        MonthlyPayment.month <= current_month,
         MonthlyPayment.is_paid == False,
-    ).count()
+    )
+
+    if debt_period == "current_year":
+        q = q.filter(MonthlyPayment.year == current_year, MonthlyPayment.month <= current_month)
+    elif debt_period in ("last_3_months", "last_6_months", "last_12_months"):
+        months_back = {"last_3_months": 3, "last_6_months": 6, "last_12_months": 12}[debt_period]
+        # Build list of (year, month) pairs going back N months
+        pairs = []
+        y, m = current_year, current_month
+        for _ in range(months_back):
+            pairs.append((y, m))
+            m -= 1
+            if m == 0:
+                m = 12
+                y -= 1
+        from sqlalchemy import tuple_
+        q = q.filter(tuple_(MonthlyPayment.year, MonthlyPayment.month).in_(pairs))
+    elif debt_period == "since_joined":
+        joined = user.joined_at  # date or None
+        if joined:
+            q = q.filter(
+                (MonthlyPayment.year > joined.year) |
+                ((MonthlyPayment.year == joined.year) & (MonthlyPayment.month >= joined.month))
+            )
+            q = q.filter(
+                (MonthlyPayment.year < current_year) |
+                ((MonthlyPayment.year == current_year) & (MonthlyPayment.month <= current_month))
+            )
+        else:
+            q = q.filter(MonthlyPayment.year == current_year, MonthlyPayment.month <= current_month)
+    # "all_time" — no extra filter, just unpaid
+
+    unpaid_months = q.count()
 
     if unpaid_months == 0:
         return {

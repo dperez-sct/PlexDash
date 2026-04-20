@@ -11,6 +11,7 @@ import io
 from app.database import get_db
 from app.models.monthly_payment import MonthlyPayment
 from app.models.user import User
+from app.models.settings import Settings, MONTHLY_PRICE_KEY
 from app.api.audit import log_action
 from app.schemas import (
     MonthlyPayment as MonthlyPaymentSchema,
@@ -47,8 +48,16 @@ def get_year_payments(
         # Create a dict of month -> payment
         payments_dict = {p.month: p for p in payments}
 
-        # Ensure all 12 months exist (create if missing)
-        for month in range(1, 13):
+        # Determine first month to create (respect joined_at)
+        joined = user.joined_at
+        first_month = 1
+        if joined and joined.year == year:
+            first_month = joined.month
+        elif joined and joined.year > year:
+            first_month = 13  # don't create any rows for years before joined
+
+        # Ensure months from first_month..12 exist (create if missing)
+        for month in range(first_month, 13):
             if month not in payments_dict:
                 new_payment = MonthlyPayment(
                     user_id=user.id,
@@ -67,6 +76,7 @@ def get_year_payments(
             user_id=user.id,
             username=user.username,
             thumb=user.thumb,
+            joined_at=user.joined_at,
             payments=payments_dict
         ))
 
@@ -85,19 +95,18 @@ async def update_monthly_payment(
     if month < 1 or month > 12:
         raise HTTPException(status_code=400, detail="Month must be between 1 and 12")
 
-    # Get or create the payment record
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Use with_for_update to lock the row and avoid race conditions
     payment = db.query(MonthlyPayment).filter(
         MonthlyPayment.user_id == user_id,
         MonthlyPayment.year == year,
         MonthlyPayment.month == month
-    ).first()
+    ).with_for_update().first()
 
     if not payment:
-        # Create new payment record
-        user = db.query(User).filter(User.id == user_id).first()
-        if not user:
-            raise HTTPException(status_code=404, detail="User not found")
-
         payment = MonthlyPayment(
             user_id=user_id,
             year=year,
@@ -122,23 +131,17 @@ async def update_monthly_payment(
     db.commit()
     db.refresh(payment)
 
-    # Audit log
-    user = db.query(User).filter(User.id == user_id).first()
-    username = user.username if user else f"user_{user_id}"
     if payment_update.is_paid is True:
         log_action(db, "payment_marked", "payment", payment.id, {
-            "username": username, "user_id": user_id, "year": year, "month": month,
+            "username": user.username, "user_id": user_id, "year": year, "month": month,
             "amount": float(payment.amount)
         })
+        from app.services.notification_service import send_payment_notification
+        await send_payment_notification(db, user.username, month, year, float(payment.amount))
     elif payment_update.is_paid is False:
         log_action(db, "payment_removed", "payment", payment.id, {
-            "username": username, "user_id": user_id, "year": year, "month": month
+            "username": user.username, "user_id": user_id, "year": year, "month": month
         })
-
-    # Send notification on payment received
-    if payment_update.is_paid is True:
-        from app.services.notification_service import send_payment_notification
-        await send_payment_notification(db, username, month, year, float(payment.amount))
 
     return payment
 
@@ -154,7 +157,13 @@ async def toggle_month_paid(
     if month < 1 or month > 12:
         raise HTTPException(status_code=400, detail="Month must be between 1 and 12")
 
-    # Get or create the payment record
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    price_setting = db.query(Settings).filter(Settings.key == MONTHLY_PRICE_KEY).first()
+    monthly_price = float(price_setting.value) if price_setting and price_setting.value else 0.0
+
     payment = db.query(MonthlyPayment).filter(
         MonthlyPayment.user_id == user_id,
         MonthlyPayment.year == year,
@@ -162,33 +171,35 @@ async def toggle_month_paid(
     ).first()
 
     if not payment:
-        user = db.query(User).filter(User.id == user_id).first()
-        if not user:
-            raise HTTPException(status_code=404, detail="User not found")
-
         payment = MonthlyPayment(
             user_id=user_id,
             year=year,
             month=month,
-            amount=0,
+            amount=monthly_price,
             is_paid=True,
             paid_at=datetime.now(timezone.utc)
         )
         db.add(payment)
     else:
-        # Toggle the status
         payment.is_paid = not payment.is_paid
         payment.paid_at = datetime.now(timezone.utc) if payment.is_paid else None
+        if payment.is_paid and float(payment.amount) == 0:
+            payment.amount = monthly_price
 
     db.commit()
     db.refresh(payment)
 
-    # Send notification if toggled to paid
     if payment.is_paid:
-        user = db.query(User).filter(User.id == user_id).first()
-        username = user.username if user else f"user_{user_id}"
+        log_action(db, "payment_marked", "payment", payment.id, {
+            "username": user.username, "user_id": user_id, "year": year, "month": month,
+            "amount": float(payment.amount)
+        })
         from app.services.notification_service import send_payment_notification
-        await send_payment_notification(db, username, month, year, float(payment.amount))
+        await send_payment_notification(db, user.username, month, year, float(payment.amount))
+    else:
+        log_action(db, "payment_removed", "payment", payment.id, {
+            "username": user.username, "user_id": user_id, "year": year, "month": month
+        })
 
     return payment
 
@@ -235,6 +246,7 @@ def get_user_payment_history(user_id: int, db: Session = Depends(get_db)):
             "kill_stream_enabled": user.kill_stream_enabled,
             "warn_count": user.warn_count or 0,
             "last_warned_at": user.last_warned_at.isoformat() if user.last_warned_at else None,
+            "joined_at": user.joined_at.isoformat() if user.joined_at else None,
             "created_at": user.created_at,
             "notes": user.notes,
         },
@@ -294,6 +306,9 @@ def export_year_payments(
 @router.post("/{year}/{month}/bulk-pay")
 def bulk_mark_paid(year: int, month: int, db: Session = Depends(get_db)):
     """Mark all active users as paid for a specific month."""
+    price_setting = db.query(Settings).filter(Settings.key == MONTHLY_PRICE_KEY).first()
+    monthly_price = float(price_setting.value) if price_setting and price_setting.value else 0.0
+
     payments = (
         db.query(MonthlyPayment)
         .join(User, MonthlyPayment.user_id == User.id)
@@ -310,6 +325,8 @@ def bulk_mark_paid(year: int, month: int, db: Session = Depends(get_db)):
     for p in payments:
         p.is_paid = True
         p.paid_at = datetime.now(timezone.utc)
+        if float(p.amount) == 0:
+            p.amount = monthly_price
         count += 1
     db.commit()
     log_action(db, "bulk_mark_paid", "monthly_payment", None, {"year": year, "month": month, "count": count})

@@ -25,6 +25,9 @@ import {
   restoreBackup,
 } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
+import ConfirmModal from '../components/ConfirmModal';
+import { APP_VERSION, CHANGELOG } from '../constants';
 
 
 function NotificationPreferenceToggle({
@@ -532,6 +535,9 @@ export default function Settings() {
 
       {/* Tautulli Integration */}
       <TautulliSection />
+
+      {/* Version & Changelog */}
+      <VersionSection />
     </div>
   );
 }
@@ -752,6 +758,10 @@ function BackupSection() {
   const [downloading, setDownloading] = useState(false);
   const [restoring, setRestoring] = useState(false);
   const [status, setStatus] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
+  const [confirmModal, setConfirmModal] = useState<{
+    title: string; message: string; confirmLabel?: string; confirmClass?: string; onConfirm: () => void;
+  } | null>(null);
+  const { toast } = useToast();
 
   const handleDownload = async () => {
     setDownloading(true);
@@ -770,28 +780,34 @@ function BackupSection() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (!confirm('⚠️ ¿Estás seguro de restaurar este backup? Los datos existentes podrían ser sobreescritos.')) {
-      e.target.value = '';
-      return;
-    }
-
-    setRestoring(true);
-    setStatus(null);
-    try {
-      const text = await file.text();
-      const data = JSON.parse(text);
-      const res = await restoreBackup(data);
-      const r = res.data.restored;
-      setStatus({
-        type: 'success',
-        msg: `Restaurado: ${r.users || 0} usuarios, ${r.payments || 0} pagos, ${r.settings || 0} ajustes, ${r.expenses || 0} gastos`,
-      });
-    } catch {
-      setStatus({ type: 'error', msg: 'Error al restaurar. Asegúrate de que el archivo es un backup válido de PlexDash.' });
-    } finally {
-      setRestoring(false);
-      e.target.value = '';
-    }
+    const fileRef = e.target;
+    setConfirmModal({
+      title: 'Restaurar backup',
+      message: '¿Estás seguro de restaurar este backup? Los datos existentes podrían ser sobreescritos.',
+      confirmLabel: 'Restaurar',
+      onConfirm: async () => {
+        setConfirmModal(null);
+        setRestoring(true);
+        setStatus(null);
+        try {
+          const text = await file.text();
+          const data = JSON.parse(text);
+          const res = await restoreBackup(data);
+          const r = res.data.restored;
+          setStatus({
+            type: 'success',
+            msg: `Restaurado: ${r.users || 0} usuarios, ${r.payments || 0} pagos, ${r.settings || 0} ajustes, ${r.expenses || 0} gastos`,
+          });
+          toast('Backup restaurado correctamente', 'success');
+        } catch {
+          setStatus({ type: 'error', msg: 'Error al restaurar el backup. Verifica el archivo.' });
+          toast('Error al restaurar el backup', 'error');
+        } finally {
+          setRestoring(false);
+          fileRef.value = '';
+        }
+      },
+    });
   };
 
   return (
@@ -827,6 +843,17 @@ function BackupSection() {
           />
         </label>
       </div>
+
+      {confirmModal && (
+        <ConfirmModal
+          title={confirmModal.title}
+          message={confirmModal.message}
+          confirmLabel={confirmModal.confirmLabel}
+          confirmClass={confirmModal.confirmClass}
+          onConfirm={confirmModal.onConfirm}
+          onCancel={() => setConfirmModal(null)}
+        />
+      )}
     </div>
   );
 }
@@ -837,6 +864,7 @@ function TautulliSection() {
   const [tautulliApiKey, setTautulliApiKey] = useState('');
   const [killMessage, setKillMessage] = useState('');
   const [warnMode, setWarnMode] = useState('always');
+  const [debtPeriod, setDebtPeriod] = useState('current_year');
   const [configured, setConfigured] = useState(false);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -852,6 +880,7 @@ function TautulliSection() {
           if (data.tautulli_url) setTautulliUrl(data.tautulli_url);
           if (data.kill_message) setKillMessage(data.kill_message);
           if (data.warn_mode) setWarnMode(data.warn_mode);
+          if (data.debt_period) setDebtPeriod(data.debt_period);
         }
       } catch { /* ignore */ }
     };
@@ -867,6 +896,7 @@ function TautulliSection() {
       if (tautulliApiKey) body.tautulli_api_key = tautulliApiKey;
       body.kill_message = killMessage;
       body.warn_mode = warnMode;
+      body.debt_period = debtPeriod;
       await fetch('/api/settings/tautulli', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -983,6 +1013,37 @@ function TautulliSection() {
           </div>
         </div>
 
+        {/* Debt period */}
+        <div>
+          <label className="block text-gray-400 text-sm mb-2">Período de deuda a comprobar</label>
+          <p className="text-gray-600 text-xs mb-3">Define qué meses se cuentan como impagados al verificar si un usuario tiene deuda</p>
+          <div className="space-y-2">
+            {[
+              { value: 'current_year', label: 'Año actual', desc: 'Solo meses impagados del año en curso' },
+              { value: 'last_3_months', label: 'Últimos 3 meses', desc: 'Comprueba los 3 meses anteriores al actual' },
+              { value: 'last_6_months', label: 'Último semestre', desc: 'Comprueba los últimos 6 meses' },
+              { value: 'last_12_months', label: 'Último año', desc: 'Comprueba los últimos 12 meses' },
+              { value: 'since_joined', label: 'Desde fecha de alta', desc: 'Desde la fecha de alta configurada en el perfil del usuario' },
+              { value: 'all_time', label: 'Todo el historial', desc: 'Cualquier mes impagado en todo el historial' },
+            ].map((opt) => (
+              <label key={opt.value} className={`flex items-start p-3 rounded-lg border cursor-pointer transition-colors ${debtPeriod === opt.value ? 'bg-plex-yellow/10 border-plex-yellow/50' : 'bg-plex-darker border-gray-700 hover:border-gray-600'}`}>
+                <input
+                  type="radio"
+                  name="debtPeriod"
+                  value={opt.value}
+                  checked={debtPeriod === opt.value}
+                  onChange={() => setDebtPeriod(opt.value)}
+                  className="mt-0.5 mr-3 accent-yellow-500"
+                />
+                <div>
+                  <span className="text-white text-sm font-medium">{opt.label}</span>
+                  <p className="text-gray-500 text-xs">{opt.desc}</p>
+                </div>
+              </label>
+            ))}
+          </div>
+        </div>
+
         {configured && (
           <div className="bg-plex-darker border border-gray-700 rounded-lg p-4 mt-4">
             <h3 className="text-white font-medium mb-2">📋 Configuración en Tautulli</h3>
@@ -1019,6 +1080,66 @@ function TautulliSection() {
         >
           {testing ? 'Probando...' : 'Probar Conexión'}
         </button>
+      </div>
+    </div>
+  );
+}
+
+
+function VersionSection() {
+  const [expanded, setExpanded] = React.useState<string | null>(CHANGELOG[0]?.version ?? null);
+
+  const TYPE_STYLES: Record<string, { label: string; cls: string }> = {
+    feat:     { label: 'Nueva función', cls: 'bg-blue-500/20 text-blue-300 border border-blue-500/30' },
+    fix:      { label: 'Corrección',    cls: 'bg-green-500/20 text-green-300 border border-green-500/30' },
+    security: { label: 'Seguridad',     cls: 'bg-amber-500/20 text-amber-300 border border-amber-500/30' },
+    perf:     { label: 'Rendimiento',   cls: 'bg-purple-500/20 text-purple-300 border border-purple-500/30' },
+  };
+
+  return (
+    <div className="bg-plex-dark rounded-lg p-6 max-w-2xl mt-8 border border-gray-800">
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="text-xl font-semibold text-white">Versión</h2>
+        <span className="px-3 py-1 bg-plex-yellow/20 text-plex-yellow border border-plex-yellow/30 rounded-full text-sm font-bold">
+          v{APP_VERSION}
+        </span>
+      </div>
+
+      <div className="space-y-2">
+        {CHANGELOG.map((entry) => {
+          const isOpen = expanded === entry.version;
+          return (
+            <div key={entry.version} className="border border-gray-700 rounded-lg overflow-hidden">
+              <button
+                className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-gray-800/50 transition-colors"
+                onClick={() => setExpanded(isOpen ? null : entry.version)}
+              >
+                <div className="flex items-center gap-3">
+                  <span className="text-white font-medium">v{entry.version}</span>
+                  <span className="text-gray-500 text-sm">{entry.date}</span>
+                  <span className="text-gray-600 text-xs">{entry.changes.length} cambios</span>
+                </div>
+                <span className="text-gray-500 text-sm">{isOpen ? '▲' : '▼'}</span>
+              </button>
+
+              {isOpen && (
+                <div className="px-4 pb-4 space-y-2 border-t border-gray-700">
+                  {entry.changes.map((change, i) => {
+                    const style = TYPE_STYLES[change.type] ?? TYPE_STYLES.fix;
+                    return (
+                      <div key={i} className="flex items-start gap-3 pt-2">
+                        <span className={`shrink-0 text-xs px-2 py-0.5 rounded-full font-medium ${style.cls}`}>
+                          {style.label}
+                        </span>
+                        <span className="text-gray-300 text-sm">{change.text}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
