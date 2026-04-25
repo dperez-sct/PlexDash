@@ -24,3 +24,4 @@ class User(Base):
 
     payments = relationship("Payment", back_populates="user")
     monthly_payments = relationship("MonthlyPayment", back_populates="user")
+    subscriptions = relationship("Subscription", back_populates="user")
