@@ -1,5 +1,7 @@
 # PlexDash
 
+![Build](https://github.com/dperez-sct/PlexDash/actions/workflows/docker-publish.yml/badge.svg)
+
 Payment management system for Plex servers.
 
 ## Features
@@ -72,7 +74,6 @@ docker run -d \
 ```bash
 cd deploy/lightweight/
 
-# Set your variables and start
 PLEX_URL=http://192.168.1.10:32400 PLEX_TOKEN=your-token docker-compose up -d
 ```
 
@@ -89,28 +90,26 @@ Available environment variables:
 
 Access the dashboard at [http://localhost:8000](http://localhost:8000).
 
+> **Default credentials:** `admin` / `admin` — change them immediately after first login from the Settings page.
+
 > **Note:** Data is persisted in a Docker volume (`plexdash_data`). The SQLite database lives at `/app/data/plexdash.db` inside the container.
 
 ---
 
 ### Option 2: Standard Deployment (Docker Compose)
 
-Uses separate containers for frontend, backend, and PostgreSQL. Suitable for environments where you want full service separation or already have a Postgres instance.
+Uses separate containers for frontend, backend, and PostgreSQL.
 
-1. **Configure environment**:
-   ```bash
-   cp .env.example .env
-   # Edit .env with your Plex URL and token
-   ```
-
-2. **Start services**:
+1. **Start services**:
    ```bash
    docker-compose up -d
    ```
 
-3. **Access**:
+2. **Access**:
    - Frontend: [http://localhost:3000](http://localhost:3000)
    - Backend API: [http://localhost:8000](http://localhost:8000)
+
+> Configure `PLEX_URL`, `PLEX_TOKEN`, and `SECRET_KEY` in `docker-compose.yaml` or via environment variables before starting.
 
 ---
 
@@ -170,113 +169,18 @@ Uses CloudNativePG for PostgreSQL and separate backend/frontend deployments.
 - Use external secrets management (Vault, AWS Secrets Manager, etc.)
 - Enable TLS in Ingress with cert-manager
 - Configure proper resource limits based on load
-- Set up monitoring and alerting
 - Configure backup for PostgreSQL (CNPG supports automated backups)
 
 ## Finding Your Plex Token
 
 1. Sign in to [Plex Web App](https://app.plex.tv)
 2. Open browser developer tools (F12)
-3. Go to any library and look for requests to `plex.tv`
+3. Navigate to any library and look for requests to `plex.tv`
 4. Find the `X-Plex-Token` header value
 
-## API Endpoints
+## Issues & Support
 
-### Authentication
-- `POST /api/auth/login` - Login and get JWT token
-- `GET /api/auth/me` - Get current user info
-- `POST /api/auth/change-credentials` - Change username/password
-
-### Users
-- `GET /api/users` - List all users
-- `GET /api/users/{id}` - Get user details
-- `POST /api/users/sync` - Sync users from Plex
-- `PUT /api/users/{id}` - Update user (notes)
-- `PUT /api/users/{id}/toggle-active` - Toggle user active status
-- `DELETE /api/users/{id}/access` - Revoke library access (keeps user as friend)
-- `POST /api/users/{id}/reactivate` - Restore all library access
-- `POST /api/users/invite` - Invite a new user to the Plex server
-
-### Monthly Payments
-- `GET /api/monthly-payments/{year}` - Get all users' payments for a year
-- `PUT /api/monthly-payments/{user_id}/{year}/{month}` - Update payment
-- `POST /api/monthly-payments/{user_id}/{year}/toggle/{month}` - Toggle paid status
-- `GET /api/monthly-payments/user/{user_id}/history` - Get user payment history
-- `POST /api/monthly-payments/quick-payment` - Bulk payment for multiple months
-
-### Dashboard
-- `GET /api/dashboard/stats` - Get dashboard statistics
-- `GET /api/dashboard/recent-payments` - Get recent payments
-- `GET /api/dashboard/upcoming-dues` - Get upcoming payment dues
-
-### Settings
-- `GET /api/settings/plex` - Get Plex settings
-- `PUT /api/settings/plex` - Update Plex settings
-- `POST /api/settings/plex/test` - Test Plex connection
-- `GET /api/settings/currency` - Get currency symbol
-- `PUT /api/settings/currency` - Update currency symbol
-- `GET /api/settings/price` - Get monthly price
-- `PUT /api/settings/price` - Update monthly price
-- `GET /api/settings/backup` - Export all data as JSON
-- `POST /api/settings/restore` - Import data from JSON backup
-
-### Expenses
-- `GET /api/expenses` - List expenses (filterable by category/year)
-- `POST /api/expenses` - Create expense
-- `PUT /api/expenses/{id}` - Update expense
-- `DELETE /api/expenses/{id}` - Delete expense
-- `GET /api/expenses/summary/{year}` - Expense summary (year=0 for all-time)
-
-### Tautulli
-- `GET /api/tautulli/settings` - Get Tautulli settings
-- `PUT /api/tautulli/settings` - Update Tautulli settings
-- `GET /api/tautulli/check/{username}` - Public endpoint for kill-stream checks
-
-### Audit
-- `GET /api/audit` - Get audit log entries
-
-### Notifications
-- `GET /api/settings/notifications` - Get notification preferences
-- `PUT /api/settings/notifications` - Update notification preferences
-- `POST /api/settings/notifications/test` - Send test notification
-
-## Project Structure
-
-```
-plexdash/
-├── frontend/              # React frontend
-│   ├── src/
-│   │   ├── components/    # Reusable components
-│   │   ├── contexts/      # React contexts (Auth)
-│   │   ├── pages/         # Page components
-│   │   └── services/      # API client
-│   ├── nginx.conf         # Nginx config for Docker
-│   └── Dockerfile
-├── backend/               # FastAPI backend
-│   ├── app/
-│   │   ├── api/           # API routes
-│   │   ├── models/        # SQLAlchemy models
-│   │   └── services/      # Business logic (plex, auth)
-│   ├── alembic/           # Database migrations
-│   └── Dockerfile
-├── deploy/
-│   └── lightweight/       # Single-container deployment (SQLite)
-│       ├── Dockerfile
-│       └── docker-compose.yaml
-├── k8s/                   # Kubernetes manifests
-│   ├── base/
-│   │   ├── namespace.yaml
-│   │   ├── cnpg-cluster.yaml
-│   │   ├── backend-deployment.yaml
-│   │   ├── frontend-deployment.yaml
-│   │   ├── ingress.yaml
-│   │   └── migration-job.yaml
-│   └── kustomization.yaml
-├── .github/
-│   └── workflows/
-│       └── docker-publish.yml  # CI: builds and pushes to GHCR on release
-└── docker-compose.yaml
-```
+Found a bug or have a feature request? [Open an issue](https://github.com/dperez-sct/PlexDash/issues).
 
 ## License
 
