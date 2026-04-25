@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  plexdash:
+    build:
+      context: ../../
+      dockerfile: deploy/lightweight/Dockerfile
+    container_name: plexdash
+    image: plexdash-lightweight:${IMAGE_TAG:-3.12}
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8000}:8000"
+    environment:
+      - DATABASE_URL=sqlite:////app/data/plexdash.db
+      - PLEX_URL=${PLEX_URL:-http://host.docker.internal:32400}
+      - PLEX_TOKEN=${PLEX_TOKEN:-your_plex_token_here}
+
+      # Security — generate a value with:
+      # python -c "import secrets; print(secrets.token_urlsafe(32))"
+      - JWT_SECRET=${JWT_SECRET:-}
+
+      # Set to true when serving over HTTPS (enables secure cookies)
+      - HTTPS_ONLY=${HTTPS_ONLY:-false}
+
+      # CORS: restrict to your domain in production, e.g. https://plexdash.example.com
+      # Leave as * for local/LAN deployments
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-*}
+
+    volumes:
+      - plexdash_data:/app/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+volumes:
+  plexdash_data:

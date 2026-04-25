@@ -37,3 +37,6 @@ dist/
 
 # Docker
 docker-compose.override.yaml
+
+# Agent workflows (local only)
+.agents/

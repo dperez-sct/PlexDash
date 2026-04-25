@@ -5,57 +5,78 @@ Payment management system for Plex servers.
 ## Features
 
 - **User Management**: Sync and manage users from your Plex server
+- **Library Sharing Toggle**: Revoke and restore Plex library access per user
+- **User Invitations**: Invite new users directly from the dashboard
+- **User Profiles**: Detailed user view with payment history, Tautulli stats, and warnings
 - **Payment Tracking**: Monthly payment grid with per-user tracking
+- **Quick Payments**: Bulk payment recording with multi-month selection
 - **Payment History**: Complete payment history per user
+- **Expenses Management**: Track platform expenses with category breakdown and year filtering
+- **Dashboard**: Overview of revenue, users, payment status, and accumulated expenses
+- **Tautulli Integration**: Kill-stream for unpaid users with configurable warning messages
+- **Telegram Notifications**: Configurable notifications for payments, expenses, and warnings
+- **Audit Log**: Full audit trail of all actions
+- **Backup & Restore**: Export/import all data as JSON
 - **User Search**: Filter users by username, email, or notes
-- **Dashboard**: Overview of revenue, users, and payment status
 - **Authentication**: JWT-based authentication with configurable credentials
-- **Currency Settings**: Configurable currency symbol
+- **Currency & Price Settings**: Configurable currency symbol and monthly price
+- **Help Page**: Built-in documentation for all features
+- **Multi-language**: Spanish UI
 
 ## Tech Stack
 
 - **Frontend**: React + TypeScript + Vite + TailwindCSS
-- **Backend**: Python + FastAPI + SQLAlchemy + Alembic
-- **Database**: PostgreSQL (CloudNativePG for Kubernetes)
-- **Infrastructure**: Docker Compose (dev) + Kubernetes (prod)
+- **Backend**: Python + FastAPI + SQLAlchemy + Alembic + python-plexapi
+- **Database**: PostgreSQL (CloudNativePG for Kubernetes) / SQLite (Lightweight)
+- **Infrastructure**: Docker Compose (dev) + Kubernetes (prod) + Lightweight single-container
 
-## Quick Start
+## Deployment Options
 
-### Prerequisites
+PlexDash offers two deployment modes. Choose the one that best fits your needs.
 
-- Docker and Docker Compose
-- Plex server with API access
+### Option 1: Standard Deployment (Recommended)
+Best for production environments. Uses a separate PostgreSQL container and isolated frontend/backend containers.
 
-### Development Setup
+1. **Configure Environment**:
+   ```bash
+   cp .env.example .env
+   # Edit .env with your Plex URL and token
+   ```
+
+2. **Start Services**:
+   ```bash
+   docker-compose up -d
+   ```
+
+3. **Access**:
+   - Frontend: [http://localhost:3000](http://localhost:3000)
+   - Backend API: [http://localhost:8000](http://localhost:8000)
+
+### Option 2: Lightweight (Single Container)
+Best for low-resource environments (e.g., Raspberry Pi). Uses SQLite and bundles the frontend/backend into a single container.
+
+1. **Navigate to lightweight directory**:
+   ```bash
+   cd deploy/lightweight/
+   ```
+
+2. **Start Service**:
+   ```bash
+   # You can set variables inline or create a .env here
+   PLEX_URL=http://192.168.1.10:32400 PLEX_TOKEN=your-token docker-compose up -d
+   ```
+
+3. **Access**:
+   - Dashboard: [http://localhost:8000](http://localhost:8000)
+   - *Note: Database is stored in `plexdash.db` in the volume.*
+
+## Quick Start (Development)
 
 1. Clone the repository:
-```bash
-git clone <repository-url>
-cd plexdash
-```
-
-2. Copy environment file and configure:
-```bash
-cp .env.example .env
-# Edit .env with your Plex URL and token
-```
-
-3. Start the services:
-```bash
-docker-compose up --build
-```
-
-4. Access the application:
-   - Frontend: http://localhost:3000
-   - Backend API: http://localhost:8000
-   - API Docs: http://localhost:8000/docs
-
-5. Login with default credentials:
-   - Username: `admin`
-   - Password: `admin`
-   - **Important**: Change these credentials in Settings after first login
-
-### Getting Your Plex Token
+   ```bash
+   git clone <repository-url>
+   cd plexdash
+   ```
 
 1. Sign in to Plex Web App
 2. Open browser developer tools (F12)
@@ -150,12 +171,16 @@ kubectl apply -f k8s/base/migration-job.yaml
 - `POST /api/users/sync` - Sync users from Plex
 - `PUT /api/users/{id}` - Update user (notes)
 - `PUT /api/users/{id}/toggle-active` - Toggle user active status
+- `DELETE /api/users/{id}/access` - Revoke library access (keeps user as friend)
+- `POST /api/users/{id}/reactivate` - Restore all library access
+- `POST /api/users/invite` - Invite a new user to the Plex server
 
 ### Monthly Payments
 - `GET /api/monthly-payments/{year}` - Get all users' payments for a year
 - `PUT /api/monthly-payments/{user_id}/{year}/{month}` - Update payment
 - `POST /api/monthly-payments/{user_id}/{year}/toggle/{month}` - Toggle paid status
 - `GET /api/monthly-payments/user/{user_id}/history` - Get user payment history
+- `POST /api/monthly-payments/quick-payment` - Bulk payment for multiple months
 
 ### Dashboard
 - `GET /api/dashboard/stats` - Get dashboard statistics
@@ -168,6 +193,30 @@ kubectl apply -f k8s/base/migration-job.yaml
 - `POST /api/settings/plex/test` - Test Plex connection
 - `GET /api/settings/currency` - Get currency symbol
 - `PUT /api/settings/currency` - Update currency symbol
+- `GET /api/settings/price` - Get monthly price
+- `PUT /api/settings/price` - Update monthly price
+- `GET /api/settings/backup` - Export all data as JSON
+- `POST /api/settings/restore` - Import data from JSON backup
+
+### Expenses
+- `GET /api/expenses` - List expenses (filterable by category/year)
+- `POST /api/expenses` - Create expense
+- `PUT /api/expenses/{id}` - Update expense
+- `DELETE /api/expenses/{id}` - Delete expense
+- `GET /api/expenses/summary/{year}` - Expense summary (year=0 for all-time)
+
+### Tautulli
+- `GET /api/tautulli/settings` - Get Tautulli settings
+- `PUT /api/tautulli/settings` - Update Tautulli settings
+- `GET /api/tautulli/check/{username}` - Public endpoint for kill-stream checks
+
+### Audit
+- `GET /api/audit` - Get audit log entries
+
+### Notifications
+- `GET /api/settings/notifications` - Get notification preferences
+- `PUT /api/settings/notifications` - Update notification preferences
+- `POST /api/settings/notifications/test` - Send test notification
 
 ## Project Structure
 
@@ -188,6 +237,10 @@ plexdash/
 │   │   └── services/      # Business logic (plex, auth)
 │   ├── alembic/           # Database migrations
 │   └── Dockerfile
+├── deploy/
+│   └── lightweight/       # Single-container SQLite deployment
+│       ├── Dockerfile
+│       └── docker-compose.yaml
 ├── k8s/                   # Kubernetes manifests
 │   ├── base/
 │   │   ├── namespace.yaml

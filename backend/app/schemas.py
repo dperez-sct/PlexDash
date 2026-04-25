@@ -1,7 +1,7 @@
 from pydantic import BaseModel
-from datetime import datetime
+from datetime import datetime, date
 from decimal import Decimal
-from typing import Optional, Dict
+from typing import Optional, Dict, List
 
 
 # User schemas
@@ -18,6 +18,8 @@ class UserCreate(UserBase):
 
 class UserUpdate(BaseModel):
     notes: Optional[str] = None
+    kill_stream_enabled: Optional[bool] = None
+    joined_at: Optional[date] = None
 
 
 class User(UserBase):
@@ -25,36 +27,8 @@ class User(UserBase):
     plex_id: str
     is_active: bool
     deleted_from_plex: bool = False
-    created_at: datetime
-
-    class Config:
-        from_attributes = True
-
-
-# Subscription schemas
-class SubscriptionBase(BaseModel):
-    plan_name: str = "Standard"
-    amount: Decimal
-    currency: str = "USD"
-
-
-class SubscriptionCreate(SubscriptionBase):
-    user_id: int
-
-
-class SubscriptionUpdate(BaseModel):
-    plan_name: Optional[str] = None
-    amount: Optional[Decimal] = None
-    status: Optional[str] = None
-    next_payment_date: Optional[datetime] = None
-
-
-class Subscription(SubscriptionBase):
-    id: int
-    user_id: int
-    status: str
-    start_date: datetime
-    next_payment_date: Optional[datetime]
+    kill_stream_enabled: bool = False
+    joined_at: Optional[date] = None
     created_at: datetime
 
     class Config:
@@ -64,7 +38,7 @@ class Subscription(SubscriptionBase):
 # Payment schemas
 class PaymentBase(BaseModel):
     amount: Decimal
-    currency: str = "USD"
+    currency: str = "EUR"
     payment_method: Optional[str] = None
     notes: Optional[str] = None
     due_date: Optional[datetime] = None
@@ -136,4 +110,54 @@ class UserYearPayments(BaseModel):
     user_id: int
     username: str
     thumb: Optional[str] = None
+    joined_at: Optional[date] = None
     payments: Dict[int, MonthlyPayment]  # month -> payment data
+
+
+# Expense schemas
+EXPENSE_CATEGORIES = [
+    "hardware", "licenses", "hosting", "plex_pass",
+    "domain", "subscriptions", "other"
+]
+
+EXPENSE_RECURRENCES = ["monthly", "yearly", "one_time"]
+
+
+class ExpenseBase(BaseModel):
+    name: str
+    category: str = "other"
+    amount: Decimal
+    is_recurring: bool = False
+    recurrence: str = "one_time"
+    date: datetime
+    notes: Optional[str] = None
+
+
+class ExpenseCreate(ExpenseBase):
+    pass
+
+
+class ExpenseUpdate(BaseModel):
+    name: Optional[str] = None
+    category: Optional[str] = None
+    amount: Optional[Decimal] = None
+    is_recurring: Optional[bool] = None
+    recurrence: Optional[str] = None
+    date: Optional[datetime] = None
+    notes: Optional[str] = None
+
+
+class Expense(ExpenseBase):
+    id: int
+    created_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class ExpenseSummary(BaseModel):
+    total_expenses: Decimal
+    total_income: Decimal
+    net_profit: Decimal
+    monthly_avg_expense: Decimal
+    by_category: Dict[str, Decimal]

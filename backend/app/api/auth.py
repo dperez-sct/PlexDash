@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from typing import Optional
+from fastapi import APIRouter, Depends, HTTPException, status, Response, Cookie, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
@@ -13,9 +14,12 @@ from app.services.auth import (
     set_setting,
 )
 from app.models.settings import ADMIN_USERNAME_KEY, ADMIN_PASSWORD_KEY
+from app.config import get_settings
+from app.limiter import limiter
 
 router = APIRouter(prefix="/auth", tags=["auth"])
-security = HTTPBearer()
+# Make security optional so we can fall back to cookies
+security = HTTPBearer(auto_error=False)
 
 
 class LoginRequest(BaseModel):
@@ -24,9 +28,8 @@ class LoginRequest(BaseModel):
 
 
 class LoginResponse(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
     username: str
+    message: str
 
 
 class ChangeCredentialsRequest(BaseModel):
@@ -36,11 +39,26 @@ class ChangeCredentialsRequest(BaseModel):
 
 
 def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    access_token: Optional[str] = Cookie(default=None),
     db: Session = Depends(get_db)
 ) -> str:
     """Dependency to verify JWT token and return current user."""
-    token = credentials.credentials
+    token = None
+    if credentials:
+        token = credentials.credentials
+    elif access_token:
+        # Cookie might include "Bearer " prefix or might be just the token
+        token = access_token.replace("Bearer ", "") if access_token.startswith("Bearer ") else access_token
+    
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     username = verify_token(db, token)
     if username is None:
         raise HTTPException(
@@ -52,19 +70,38 @@ def get_current_user(
 
 
 @router.post("/login", response_model=LoginResponse)
-def login(request: LoginRequest, db: Session = Depends(get_db)):
-    """Authenticate user and return JWT token."""
-    if not authenticate_user(db, request.username, request.password):
+@limiter.limit("10/minute")
+def login(request: Request, response: Response, login_data: LoginRequest, db: Session = Depends(get_db)):
+    """Authenticate user and set JWT token in HttpOnly cookie. Max 10 attempts per minute per IP."""
+    if not authenticate_user(db, login_data.username, login_data.password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
         )
 
-    access_token = create_access_token(db, data={"sub": request.username})
-    return LoginResponse(
-        access_token=access_token,
-        username=request.username,
+    access_token = create_access_token(db, data={"sub": login_data.username})
+
+    response.set_cookie(
+        key="access_token",
+        value=f"Bearer {access_token}",
+        httponly=True,
+        secure=get_settings().https_only,
+        samesite="lax",
+        max_age=60 * 60 * 24 * 7,  # 7 days
     )
+
+    return LoginResponse(
+        username=login_data.username,
+        message="Login successful"
+    )
+
+
+@router.post("/logout")
+def logout(response: Response):
+    """Logout user by clearing the auth cookie."""
+    response.delete_cookie("access_token")
+    return {"message": "Logged out successfully"}
+
 
 
 @router.get("/me")

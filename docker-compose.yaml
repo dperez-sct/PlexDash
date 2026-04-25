@@ -13,7 +13,7 @@ services:
     ports:
       - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U plexdash"]
+      test: [ "CMD-SHELL", "pg_isready -U plexdash" ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -27,6 +27,7 @@ services:
       DATABASE_URL: postgresql://plexdash:plexdash@postgres:5432/plexdash
       PLEX_URL: ${PLEX_URL:-http://host.docker.internal:32400}
       PLEX_TOKEN: ${PLEX_TOKEN:-}
+      SECRET_KEY: ${SECRET_KEY:-changeme_in_production_please}
       DEBUG: "true"
     ports:
       - "8000:8000"
