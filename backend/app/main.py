@@ -15,6 +15,11 @@ from app.api import users, payments, dashboard, settings as settings_router, mon
 from app.api import tautulli as tautulli_router
 from app.api.auth import get_current_user
 from app.services.plex import plex_service
+import app.models.user  # noqa: ensure table is created
+import app.models.subscription  # noqa: ensure table is created
+import app.models.payment  # noqa: ensure table is created
+import app.models.monthly_payment  # noqa: ensure table is created
+import app.models.settings  # noqa: ensure table is created
 import app.models.audit_log  # noqa: ensure table is created
 import app.models.expense  # noqa: ensure table is created
 
