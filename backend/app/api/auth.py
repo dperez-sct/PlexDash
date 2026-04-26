@@ -49,8 +49,10 @@ def get_current_user(
     if credentials:
         token = credentials.credentials
     elif access_token:
-        # Cookie might include "Bearer " prefix or might be just the token
-        token = access_token.replace("Bearer ", "") if access_token.startswith("Bearer ") else access_token
+        # Strip quotes (Python http.cookies quotes values with spaces) and optional Bearer prefix
+        token = access_token.strip('"').strip("'")
+        if token.startswith("Bearer "):
+            token = token[len("Bearer "):]
     
     if not token:
         raise HTTPException(
@@ -83,7 +85,7 @@ def login(request: Request, response: Response, login_data: LoginRequest, db: Se
 
     response.set_cookie(
         key="access_token",
-        value=f"Bearer {access_token}",
+        value=access_token,
         httponly=True,
         secure=get_settings().https_only,
         samesite="lax",
