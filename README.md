@@ -226,23 +226,27 @@ When a user starts playing something, Tautulli calls a PlexDash endpoint. PlexDa
    - **Script folder**: directory where you save the script below
    - **Script file**: `plexdash_check.py`
    - **Trigger**: Playback Start only
+   - **Script Arguments** (under the Playback Start trigger): `{user_id} {session_key}`
+
+> **Note:** Tautulli passes notification parameters as command-line arguments, not environment variables. The correct parameter for the Plex user ID is `{user_id}`.
 
 **Script to save as `plexdash_check.py`:**
 
 ```python
 #!/usr/bin/env python3
-import os, sys, json
+import sys, json
 import urllib.request, urllib.parse
+
+# Tautulli passes parameters as arguments — configure Script Arguments as: {user_id} {session_key}
+if len(sys.argv) < 3:
+    sys.exit(0)
+
+plex_user_id = sys.argv[1]
+session_key  = sys.argv[2]
 
 PLEXDASH_URL = "http://YOUR_PLEXDASH:8000"   # no trailing slash
 TAUTULLI_URL = "http://YOUR_TAUTULLI:8181"   # no trailing slash
 TAUTULLI_KEY = "YOUR_TAUTULLI_API_KEY"
-
-plex_user_id = os.environ.get("plex_user_id", "")
-session_key  = os.environ.get("session_key", "")
-
-if not plex_user_id or not session_key:
-    sys.exit(0)
 
 try:
     with urllib.request.urlopen(f"{PLEXDASH_URL}/api/tautulli/check/{plex_user_id}", timeout=5) as r:
