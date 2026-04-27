@@ -15,11 +15,11 @@ Payment management system for Plex servers.
 - **Payment History**: Complete payment history per user
 - **Expenses Management**: Track platform expenses with category breakdown and year filtering
 - **Dashboard**: Overview of revenue, users, payment status, and accumulated expenses
-- **Tautulli Integration**: Kill-stream for unpaid users with configurable warning messages
-- **Telegram Notifications**: Configurable notifications for payments, expenses, and warnings
+- **Tautulli Integration**: Kill-stream for unpaid users with configurable warning modes and debt periods
+- **Notifications**: Telegram and Discord — payments, expenses, and monthly reminders
 - **Audit Log**: Full audit trail of all actions
 - **Backup & Restore**: Export/import all data as JSON
-- **User Search**: Filter users by username, email, or notes
+- **User Search**: Filter and sort users by username, email, status, or notes
 - **Authentication**: JWT-based authentication with configurable credentials
 - **Currency & Price Settings**: Configurable currency symbol and monthly price
 - **Help Page**: Built-in documentation for all features
@@ -43,9 +43,7 @@ ghcr.io/dperez-sct/plexdash:<version>
 | Tag | Description |
 |-----|-------------|
 | `latest` | Latest build from `main` branch |
-| `0.2.0` | Specific version |
-| `0.2` | Latest patch of 0.2.x |
-| `0` | Latest minor of 0.x.x |
+| `3.14` | Specific version (matches the version shown in the app) |
 
 Images are built for `linux/amd64` and `linux/arm64` (Raspberry Pi compatible).
 
@@ -83,10 +81,10 @@ Available environment variables:
 |----------|---------|-------------|
 | `PLEX_URL` | `http://host.docker.internal:32400` | Plex Media Server URL |
 | `PLEX_TOKEN` | — | Plex authentication token |
-| `JWT_SECRET` | — | Secret for JWT signing (generate one, don't leave empty) |
+| `JWT_SECRET` | — | Secret for JWT signing — generate with `python3 -c "import secrets; print(secrets.token_urlsafe(32))"` |
 | `PORT` | `8000` | Port exposed on the host |
-| `HTTPS_ONLY` | `false` | Set to `true` when serving over HTTPS |
-| `ALLOWED_ORIGINS` | `*` | CORS origins — restrict to your domain in production |
+| `HTTPS_ONLY` | `false` | Set to `true` when serving over HTTPS (enables secure cookies) |
+| `ALLOWED_ORIGINS` | `*` | CORS allowed origins — restrict to your domain in production |
 
 Access the dashboard at [http://localhost:8000](http://localhost:8000).
 
@@ -170,6 +168,129 @@ Uses CloudNativePG for PostgreSQL and separate backend/frontend deployments.
 - Enable TLS in Ingress with cert-manager
 - Configure proper resource limits based on load
 - Configure backup for PostgreSQL (CNPG supports automated backups)
+
+---
+
+## In-app Configuration
+
+Most settings are configured from **Settings** inside the app — no need to restart the container. This includes:
+
+- Plex connection URL and token
+- Monthly price and currency symbol
+- Notifications (Telegram / Discord)
+- Tautulli integration and kill-stream behavior
+- Admin credentials
+
+---
+
+## Notifications (Telegram & Discord)
+
+Configure from **Settings → Notifications**.
+
+### Telegram
+
+1. Create a bot via [@BotFather](https://t.me/botfather) and copy the token
+2. Get your chat ID — send a message to your bot and visit:
+   `https://api.telegram.org/bot<TOKEN>/getUpdates`
+3. Enter both values in Settings → Notifications
+
+### Discord
+
+1. In your Discord server, go to **Settings → Integrations → Webhooks → New Webhook**
+2. Copy the webhook URL
+3. Paste it in Settings → Notifications
+
+### Notification events
+
+| Event | Description |
+|-------|-------------|
+| Payment received | Fires when a monthly payment is marked as paid |
+| Expense created | Fires when a new expense is added |
+| Monthly reminders | Summary of pending payments (triggered manually or on schedule) |
+
+---
+
+## Tautulli Integration
+
+PlexDash can automatically kill streams for users with outstanding debt.
+
+### How it works
+
+When a user starts playing something, Tautulli calls a PlexDash endpoint. PlexDash checks the user's payment status and tells Tautulli whether to allow or kill the stream.
+
+### Setup
+
+1. In Tautulli, go to **Settings → Web Interface** and copy the **API Key**
+2. In PlexDash, go to **Settings → Tautulli** and enter the URL and API key
+3. In Tautulli, create a **Script** notification agent (Settings → Notification Agents):
+   - **Script folder**: directory where you save the script below
+   - **Script file**: `plexdash_check.py`
+   - **Trigger**: Playback Start only
+
+**Script to save as `plexdash_check.py`:**
+
+```python
+#!/usr/bin/env python3
+import os, sys, json
+import urllib.request, urllib.parse
+
+PLEXDASH_URL = "http://YOUR_PLEXDASH:8000"   # no trailing slash
+TAUTULLI_URL = "http://YOUR_TAUTULLI:8181"   # no trailing slash
+TAUTULLI_KEY = "YOUR_TAUTULLI_API_KEY"
+
+plex_user_id = os.environ.get("plex_user_id", "")
+session_key  = os.environ.get("session_key", "")
+
+if not plex_user_id or not session_key:
+    sys.exit(0)
+
+try:
+    with urllib.request.urlopen(f"{PLEXDASH_URL}/api/tautulli/check/{plex_user_id}", timeout=5) as r:
+        data = json.loads(r.read())
+except Exception as e:
+    print(f"[PlexDash] Error: {e}")
+    sys.exit(0)
+
+if data.get("action") != "kill":
+    sys.exit(0)
+
+message = data.get("message", "")
+params = urllib.parse.urlencode({
+    "apikey": TAUTULLI_KEY,
+    "cmd": "terminate_session",
+    "session_key": session_key,
+    "message": message,
+})
+try:
+    urllib.request.urlopen(f"{TAUTULLI_URL}/api/v2?{params}", timeout=5)
+    print(f"[PlexDash] Stream killed: {data.get('username')} ({data.get('unpaid_months')} months)")
+except Exception as e:
+    print(f"[PlexDash] Error terminating session: {e}")
+```
+
+### Kill-stream modes
+
+| Mode | Behavior |
+|------|----------|
+| Always | Kills every playback attempt while the user has debt |
+| Once per day | Kills only the first playback of each day |
+| Disabled | Never kills (monitoring only) |
+
+### Debt period
+
+Configurable from Settings → Tautulli. Determines which unpaid months count as debt:
+
+- Current year
+- Last 3 / 6 / 12 months
+- Since join date
+- All time
+
+### User exceptions
+
+- **Inactive users** (e.g. family) are never checked — mark a user as inactive from the Users list
+- **Per-user kill-stream** can be disabled individually from the user's profile
+
+---
 
 ## Finding Your Plex Token
 

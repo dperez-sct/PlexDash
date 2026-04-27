@@ -11,16 +11,15 @@
 ### Arrancar en local
 
 ```bash
-# Clonar el repositorio
 git clone https://github.com/dperez-sct/PlexDash.git
 cd PlexDash
 
-# Levantar todos los servicios (backend + frontend + postgres)
+# Levanta backend + frontend + postgres
 docker-compose up -d
 ```
 
 - Frontend: http://localhost:3000
-- Backend API + docs: http://localhost:8000/docs
+- Backend API + Swagger: http://localhost:8000/docs
 
 Para desarrollo con hot-reload:
 
@@ -43,9 +42,19 @@ npm run dev
 | `DATABASE_URL` | PostgreSQL: `postgresql://user:pass@host/db` · SQLite: `sqlite:////ruta/plexdash.db` |
 | `PLEX_URL` | URL del servidor Plex |
 | `PLEX_TOKEN` | Token de autenticación de Plex |
-| `JWT_SECRET` | Secreto para firmar JWT (genera uno con `python -c "import secrets; print(secrets.token_urlsafe(32))"`) |
+| `JWT_SECRET` | Secreto para firmar JWT |
 | `HTTPS_ONLY` | `true` para cookies seguras (solo en HTTPS) |
 | `ALLOWED_ORIGINS` | Orígenes CORS permitidos (`*` en local) |
+
+El resto de configuración (Telegram, Discord, Tautulli, precio, moneda...) se gestiona desde la propia app en Ajustes y se persiste en la base de datos.
+
+### SQLite vs PostgreSQL
+
+El modo **lightweight** usa SQLite en lugar de PostgreSQL. Hay algunas diferencias a tener en cuenta al desarrollar:
+
+- En SQLite, `main.py` ejecuta `ALTER TABLE` manuales al arrancar para añadir columnas nuevas si no existen. Esto es un mecanismo de compatibilidad hacia atrás — las migraciones Alembic siguen siendo la fuente de verdad para PostgreSQL.
+- SQLite no soporta operaciones concurrentes de escritura; en producción esto no es un problema dado el uso típico de la app.
+- Para desarrollar contra SQLite: `DATABASE_URL=sqlite:////tmp/plexdash.db uvicorn app.main:app --reload`
 
 ### Migraciones de base de datos
 
@@ -59,18 +68,50 @@ alembic revision --autogenerate -m "descripcion"
 alembic upgrade head
 ```
 
+Al añadir una columna nueva al modelo, añade también el `ALTER TABLE` correspondiente en el bloque de compatibilidad SQLite de `main.py` para que el lightweight no rompa en instalaciones existentes.
+
+---
+
+## Conceptos clave del dominio
+
+### Estados de usuario
+
+Los usuarios tienen dos flags independientes que es importante no confundir:
+
+| Flag | Qué significa | Quién lo cambia |
+|------|--------------|-----------------|
+| `is_active` | Si el usuario se gestiona en PlexDash (pagos, avisos, etc.) | El administrador manualmente |
+| `deleted_from_plex` | Si el usuario ya no aparece en el servidor Plex | El sync automático con Plex |
+
+Un usuario inactivo (`is_active=False`) no aparece en la cuadrícula de pagos, no recibe avisos de Tautulli y no cuenta en el dashboard. Útil para familia u otros usuarios que no pagan.
+
+Un usuario eliminado de Plex (`deleted_from_plex=True`) sigue visible en PlexDash (con su historial de pagos) pero marcado como eliminado.
+
+### Sincronización de usuarios
+
+`POST /api/users/sync` consulta la API de Plex y:
+- Crea usuarios nuevos que aparezcan en Plex y no existan en PlexDash
+- Marca como `deleted_from_plex=True` los usuarios que ya no están en Plex
+- Restaura a `deleted_from_plex=False` usuarios que hayan vuelto a aparecer
+
+Los usuarios invitados desde PlexDash se crean con `plex_id = pending_{email}` y se actualizan al `plex_id` real en la próxima sincronización.
+
+### Creación de filas de pago
+
+Las filas mensuales (`MonthlyPayment`) **no se crean automáticamente** al inicio de cada mes. Se generan de forma lazy cuando se consulta la vista de Pagos para un año concreto. Si nadie abre esa vista, las filas no existen y el check de Tautulli devolverá `allow` por ausencia de deuda.
+
 ---
 
 ## Proceso de release
 
-El versionado de PlexDash usa un número interno de la forma `X.Y` (ej. `3.14`) que es el que ve el usuario en la app. Los tags de git y las imágenes Docker siguen ese mismo número.
+El versionado usa un número de la forma `X.Y` (ej. `3.14`) visible en la app. Los tags de git y las imágenes Docker usan ese mismo número.
 
-### Pasos para publicar una nueva versión
+### Pasos
 
-1. **Actualizar la versión y el changelog** en `frontend/src/constants.ts`:
+1. **Actualizar versión y changelog** en `frontend/src/constants.ts`:
 
    ```ts
-   export const APP_VERSION = '3.15';  // ← nuevo número
+   export const APP_VERSION = '3.15';
 
    export const CHANGELOG: ChangelogEntry[] = [
      {
@@ -85,7 +126,7 @@ El versionado de PlexDash usa un número interno de la forma `X.Y` (ej. `3.14`) 
    ];
    ```
 
-   Tipos de cambio disponibles: `feat` · `fix` · `security` · `perf`
+   Tipos disponibles: `feat` · `fix` · `security` · `perf`
 
 2. **Commit y tag**:
 
@@ -96,18 +137,11 @@ El versionado de PlexDash usa un número interno de la forma `X.Y` (ej. `3.14`) 
    git push origin main --tags
    ```
 
-3. **GitHub Actions publica automáticamente** la imagen Docker en GHCR:
+3. **GitHub Actions publica automáticamente**:
    - `ghcr.io/dperez-sct/plexdash:3.15`
    - `ghcr.io/dperez-sct/plexdash:latest`
 
    El build tarda ~5 minutos y cubre `linux/amd64` y `linux/arm64`.
-
-### Correspondencia versión → imagen Docker
-
-| Tag git | Imagen publicada |
-|---------|-----------------|
-| `v3.15` | `ghcr.io/dperez-sct/plexdash:3.15` |
-| push a `main` | `ghcr.io/dperez-sct/plexdash:latest` |
 
 ---
 
@@ -117,7 +151,7 @@ El versionado de PlexDash usa un número interno de la forma `X.Y` (ej. `3.14`) 
 PlexDash/
 ├── frontend/              # React + TypeScript + Vite + TailwindCSS
 │   └── src/
-│       ├── constants.ts   # APP_VERSION y CHANGELOG (actualizar en cada release)
+│       ├── constants.ts   # APP_VERSION y CHANGELOG — actualizar en cada release
 │       ├── components/
 │       ├── pages/
 │       └── services/api.ts
@@ -125,12 +159,12 @@ PlexDash/
 │   └── app/
 │       ├── api/           # Rutas HTTP
 │       ├── models/        # Modelos SQLAlchemy
-│       ├── services/      # Lógica de negocio (plex, auth, tautulli...)
-│       └── main.py
+│       ├── services/      # Lógica de negocio (plex, auth, tautulli, notificaciones)
+│       └── main.py        # Arranque, middlewares, compatibilidad SQLite
 ├── deploy/
 │   └── lightweight/       # Imagen todo-en-uno con SQLite
-├── k8s/                   # Manifiestos Kubernetes
-└── .github/workflows/     # CI: build y push a GHCR
+├── k8s/                   # Manifiestos Kubernetes (CNPG + ingress)
+└── .github/workflows/     # CI: build y push a GHCR en cada tag
 ```
 
 ---
@@ -145,6 +179,6 @@ Usamos [Conventional Commits](https://www.conventionalcommits.org/):
 | `fix:` | Corrección de bug |
 | `perf:` | Mejora de rendimiento |
 | `security:` | Parche de seguridad |
-| `chore:` | Tareas de mantenimiento (versión, dependencias...) |
+| `chore:` | Mantenimiento (versión, dependencias...) |
 | `docs:` | Cambios en documentación |
 | `ci:` | Cambios en pipelines de CI/CD |
