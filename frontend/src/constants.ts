@@ -3,7 +3,7 @@ export const MONTH_NAMES = [
   'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic',
 ];
 
-export const APP_VERSION = '3.13';
+export const APP_VERSION = '3.14';
 
 export interface ChangelogEntry {
   version: string;
@@ -12,6 +12,16 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: '3.14',
+    date: '2026-04',
+    changes: [
+      { type: 'fix', text: 'Tautulli: usuarios inactivos (ej. familia) no son comprobados ni cortados' },
+      { type: 'fix', text: 'Login roto por comillas en cookie Bearer — sesión no se restauraba al recargar' },
+      { type: 'fix', text: 'Crash al arrancar con SQLite por modelos no importados antes de create_all' },
+      { type: 'fix', text: 'InvalidRequestError al init por relación subscriptions no declarada en User' },
+    ],
+  },
   {
     version: '3.13',
     date: '2026-04',
