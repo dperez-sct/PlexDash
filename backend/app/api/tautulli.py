@@ -99,6 +99,16 @@ async def check_user_payment(plex_id: str, db: Session = Depends(get_db)):
             "user_found": False,
         }
 
+    # Inactive users (e.g. family) are never checked for debt
+    if not user.is_active:
+        return {
+            "action": "allow",
+            "reason": "user_inactive",
+            "message": "",
+            "user_found": True,
+            "username": user.username,
+        }
+
     # Check if kill stream is enabled for this user
     if not user.kill_stream_enabled:
         return {
