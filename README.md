@@ -289,6 +289,10 @@ Configurable from Settings → Tautulli. Determines which unpaid months count as
 - Since join date
 - All time
 
+### Ignore current month
+
+When enabled (Settings → Tautulli → **Ignore current month**), the ongoing month is never counted as debt even if unpaid. Useful when users pay mid-month — they won't get interrupted until the following month's check shows the previous month still unpaid.
+
 ### User exceptions
 
 - **Inactive users** (e.g. family) are never checked — mark a user as inactive from the Users list

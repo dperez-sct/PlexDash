@@ -30,6 +30,7 @@ class TautulliSettings(BaseModel):
     kill_message: Optional[str] = None
     warn_mode: Optional[str] = None
     debt_period: Optional[str] = None
+    exclude_current_month: Optional[bool] = None
 
 
 @settings_router.get("")
@@ -42,6 +43,7 @@ def get_tautulli_settings(db: Session = Depends(get_db)):
         "kill_message": get_setting(db, "tautulli_kill_message") or "",
         "warn_mode": get_setting(db, "kill_stream_warn_mode") or WARN_MODE_ALWAYS,
         "debt_period": get_setting(db, DEBT_PERIOD_KEY) or "current_year",
+        "exclude_current_month": get_setting(db, "exclude_current_month") == "true",
     }
 
 
@@ -61,6 +63,8 @@ def update_tautulli_settings(data: TautulliSettings, db: Session = Depends(get_d
         if data.debt_period not in DEBT_PERIODS:
             raise HTTPException(status_code=400, detail=f"Invalid debt_period: {data.debt_period}")
         set_setting(db, DEBT_PERIOD_KEY, data.debt_period)
+    if data.exclude_current_month is not None:
+        set_setting(db, "exclude_current_month", "true" if data.exclude_current_month else "false")
     # Reload service config
     tautulli_service.load_from_db(db)
     return {"message": "Tautulli settings saved"}
@@ -174,6 +178,12 @@ async def check_user_payment(plex_id: str, db: Session = Depends(get_db)):
         else:
             q = q.filter(MonthlyPayment.year == current_year, MonthlyPayment.month <= current_month)
     # "all_time" — no extra filter, just unpaid
+
+    # Optionally exclude the current month (grace period for users who pay mid-month)
+    if get_setting(db, "exclude_current_month") == "true":
+        q = q.filter(
+            ~((MonthlyPayment.year == current_year) & (MonthlyPayment.month == current_month))
+        )
 
     unpaid_months = q.count()
 
