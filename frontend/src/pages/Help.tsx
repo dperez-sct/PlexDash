@@ -315,6 +315,17 @@ export default function Help() {
                             </div>
                         </div>
 
+                        {/* Options */}
+                        <div className="bg-plex-darker border border-gray-700 rounded-lg p-4 mt-2">
+                            <p className="text-gray-300 text-sm font-medium mb-2">Opciones en Ajustes → Tautulli</p>
+                            <ul className="text-gray-400 text-sm space-y-2">
+                                <li>• <strong className="text-gray-300">Modo de aviso</strong> — Siempre cortar / Una vez al día / Desactivado</li>
+                                <li>• <strong className="text-gray-300">Período de deuda</strong> — qué meses se cuentan como impagados (año actual, últimos N meses, desde alta, todo el historial)</li>
+                                <li>• <strong className="text-gray-300">Ignorar el mes en curso</strong> — el mes actual no cuenta como deuda aunque no esté pagado. Útil si tus usuarios pagan a mediados de mes.</li>
+                                <li>• <strong className="text-gray-300">Mensaje personalizado</strong> — variables disponibles: <code className="bg-gray-800 px-1 py-0.5 rounded text-xs text-plex-yellow">{'{username}'}</code> y <code className="bg-gray-800 px-1 py-0.5 rounded text-xs text-plex-yellow">{'{months}'}</code></li>
+                            </ul>
+                        </div>
+
                         {/* Warning */}
                         <div className="bg-yellow-900/20 border border-yellow-700/30 rounded-lg p-4 mt-2">
                             <p className="text-yellow-400 text-sm font-medium">⚠️ Importante</p>
@@ -323,7 +334,6 @@ export default function Help() {
                                 <li>• El endpoint <code className="bg-gray-800 px-1 py-0.5 rounded text-xs">/api/tautulli/check/</code> es público (no requiere auth)</li>
                                 <li>• El script bash usa <strong className="text-gray-300">solo curl</strong> — sin dependencias extra</li>
                                 <li>• El script python usa <code className="bg-gray-800 px-1 py-0.5 rounded text-xs">requests</code> (ya incluido en <code className="bg-gray-800 px-1 py-0.5 rounded text-xs">lscr.io/linuxserver/tautulli</code>)</li>
-                                <li>• Puedes personalizar el mensaje en <strong className="text-gray-300">Ajustes → Tautulli → Mensaje personalizado</strong></li>
                             </ul>
                         </div>
                     </div>

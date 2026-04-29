@@ -865,6 +865,7 @@ function TautulliSection() {
   const [killMessage, setKillMessage] = useState('');
   const [warnMode, setWarnMode] = useState('always');
   const [debtPeriod, setDebtPeriod] = useState('current_year');
+  const [excludeCurrentMonth, setExcludeCurrentMonth] = useState(false);
   const [configured, setConfigured] = useState(false);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -881,6 +882,7 @@ function TautulliSection() {
           if (data.kill_message) setKillMessage(data.kill_message);
           if (data.warn_mode) setWarnMode(data.warn_mode);
           if (data.debt_period) setDebtPeriod(data.debt_period);
+          setExcludeCurrentMonth(data.exclude_current_month ?? false);
         }
       } catch { /* ignore */ }
     };
@@ -891,12 +893,13 @@ function TautulliSection() {
     setSaving(true);
     setStatus(null);
     try {
-      const body: Record<string, string> = {};
+      const body: Record<string, string | boolean> = {};
       if (tautulliUrl) body.tautulli_url = tautulliUrl;
       if (tautulliApiKey) body.tautulli_api_key = tautulliApiKey;
       body.kill_message = killMessage;
       body.warn_mode = warnMode;
       body.debt_period = debtPeriod;
+      body.exclude_current_month = excludeCurrentMonth;
       await fetch('/api/settings/tautulli', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -1042,6 +1045,24 @@ function TautulliSection() {
               </label>
             ))}
           </div>
+        </div>
+
+        {/* Exclude current month */}
+        <div>
+          <label className="flex items-start gap-3 p-3 rounded-lg border border-gray-700 bg-plex-darker cursor-pointer hover:border-gray-600 transition-colors">
+            <input
+              type="checkbox"
+              checked={excludeCurrentMonth}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setExcludeCurrentMonth(e.target.checked)}
+              className="mt-0.5 accent-yellow-500"
+            />
+            <div>
+              <span className="text-white text-sm font-medium">Ignorar el mes en curso</span>
+              <p className="text-gray-500 text-xs mt-0.5">
+                El mes actual no cuenta como deuda aunque no esté pagado. Útil si tus usuarios pagan a mediados de mes.
+              </p>
+            </div>
+          </label>
         </div>
 
         {configured && (

@@ -3,7 +3,7 @@ export const MONTH_NAMES = [
   'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic',
 ];
 
-export const APP_VERSION = '3.14';
+export const APP_VERSION = '3.15';
 
 export interface ChangelogEntry {
   version: string;
@@ -12,6 +12,13 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: '3.15',
+    date: '2026-04',
+    changes: [
+      { type: 'feat', text: 'Tautulli: opción "Ignorar el mes en curso" — el mes actual no cuenta como deuda aunque no esté pagado' },
+    ],
+  },
   {
     version: '3.14',
     date: '2026-04',
